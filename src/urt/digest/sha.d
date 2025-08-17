@@ -117,22 +117,22 @@ unittest
     SHA1Context ctx;
     shaInit(ctx);
     auto digest = shaFinalise(ctx);
-    assert(digest == Hex!"da39a3ee5e6b4b0d3255bfef95601890afd80709");
+    assert(digest == HexDecode!"da39a3ee5e6b4b0d3255bfef95601890afd80709");
 
     shaInit(ctx);
     shaUpdate(ctx, "Hello, World!");
     digest = shaFinalise(ctx);
-    assert(digest == Hex!"0a0a9f2a6772942557ab5355d76af442f8f65e01");
+    assert(digest == HexDecode!"0a0a9f2a6772942557ab5355d76af442f8f65e01");
 
     SHA256Context ctx2;
     shaInit(ctx2);
     auto digest2 = shaFinalise(ctx2);
-    assert(digest2 == Hex!"e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855");
+    assert(digest2 == HexDecode!"e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855");
 
     shaInit(ctx2);
     shaUpdate(ctx2, "Hello, World!");
     digest2 = shaFinalise(ctx2);
-    assert(digest2 == Hex!"dffd6021bb2bd5b0af676290809ec3a53191dd81c7f70a4b28688a362182986f");
+    assert(digest2 == HexDecode!"dffd6021bb2bd5b0af676290809ec3a53191dd81c7f70a4b28688a362182986f");
 }
 
 
