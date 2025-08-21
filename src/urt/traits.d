@@ -3,67 +3,67 @@ module urt.traits;
 import urt.meta;
 
 
-enum bool isType(alias X) = is(X);
+enum bool is_type(alias X) = is(X);
 
-enum bool isBoolean(T) = __traits(isUnsigned, T) && is(T : bool);
+enum bool is_boolean(T) = __traits(isUnsigned, T) && is(T : bool);
 
-enum bool isUnsignedInt(T) = is(Unqual!T == ubyte) || is(Unqual!T == ushort) || is(Unqual!T == uint) || is(Unqual!T == ulong);
-enum bool isSignedInt(T) = is(Unqual!T == byte) || is(Unqual!T == short) || is(Unqual!T == int) || is(Unqual!T == long);
-enum bool isSomeInt(T) = isUnsignedInt!T || isSignedInt!T;
-enum bool isUnsignedIntegral(T) = is(Unqual!T == bool) || isUnsignedInt!T || isSomeChar!T;
-enum bool isSignedIntegral(T) = isSignedInt!T;
-enum bool isIntegral(T) = isUnsignedIntegral!T || isSignedIntegral!T;
-enum bool isSomeFloat(T) = is(Unqual!T == float) || is(Unqual!T == double) || is(Unqual!T == real);
+enum bool is_unsigned_int(T) = is(Unqual!T == ubyte) || is(Unqual!T == ushort) || is(Unqual!T == uint) || is(Unqual!T == ulong);
+enum bool is_signed_int(T) = is(Unqual!T == byte) || is(Unqual!T == short) || is(Unqual!T == int) || is(Unqual!T == long);
+enum bool is_some_int(T) = is_unsigned_int!T || is_signed_int!T;
+enum bool is_unsigned_integral(T) = is(Unqual!T == bool) || is_unsigned_int!T || is_some_char!T;
+enum bool is_signed_integral(T) = is_signed_int!T;
+enum bool is_integral(T) = is_unsigned_integral!T || is_signed_integral!T;
+enum bool is_some_float(T) = is(Unqual!T == float) || is(Unqual!T == double) || is(Unqual!T == real);
 
-enum bool isEnum(T) = is(T == enum);
-template enumType(T)
-    if (isEnum!T)
+enum bool is_enum(T) = is(T == enum);
+template EnumType(T)
+    if (is_enum!T)
 {
     static if (is(T E == enum))
-        alias enumType = E;
+        alias EnumType = E;
     else
         static assert(false, "How this?");
 }
 
-template isUnsigned(T)
+template is_unsigned(T)
 {
     static if (!__traits(isUnsigned, T))
-        enum isUnsigned = false;
+        enum is_unsigned = false;
     else static if (is(T U == enum))
-        enum isUnsigned = isUnsigned!U;
+        enum is_unsigned = is_unsigned!U;
     else
-        enum isUnsigned = __traits(isZeroInit, T) // Not char, wchar, or dchar.
+        enum is_unsigned = __traits(isZeroInit, T) // Not char, wchar, or dchar.
             && !is(immutable T == immutable bool) && !is(T == __vector);
 }
 
-enum bool isSigned(T) = __traits(isArithmetic, T) && !__traits(isUnsigned, T) && is(T : real);
+enum bool is_signed(T) = __traits(isArithmetic, T) && !__traits(isUnsigned, T) && is(T : real);
 
-template isSomeChar(T)
+template is_some_char(T)
 {
     static if (!__traits(isUnsigned, T))
-        enum isSomeChar = false;
+        enum is_some_char = false;
     else static if (is(T U == enum))
-        enum isSomeChar = isSomeChar!U;
+        enum is_some_char = is_some_char!U;
     else
-        enum isSomeChar = !__traits(isZeroInit, T);
+        enum is_some_char = !__traits(isZeroInit, T);
 }
 
-enum bool isSomeFunction(alias T) = is(T == return) || is(typeof(T) == return) || is(typeof(&T) == return);
-enum bool isFunctionPointer(alias T) = is(typeof(*T) == function);
-enum bool isDelegate(alias T) = is(typeof(T) == delegate) || is(T == delegate);
+enum bool is_some_function(alias T) = is(T == return) || is(typeof(T) == return) || is(typeof(&T) == return);
+enum bool is_function_pointer(alias T) = is(typeof(*T) == function);
+enum bool is_delegate(alias T) = is(typeof(T) == delegate) || is(T == delegate);
 
-template isCallable(alias callable)
+template is_callable(alias callable)
 {
     static if (is(typeof(&callable.opCall) == delegate))
-        enum bool isCallable = true;
+        enum bool is_callable = true;
     else static if (is(typeof(&callable.opCall) V : V*) && is(V == function))
-        enum bool isCallable = true;
+        enum bool is_callable = true;
     else static if (is(typeof(&callable.opCall!()) TemplateInstanceType))
-        enum bool isCallable = isCallable!TemplateInstanceType;
+        enum bool is_callable = is_callable!TemplateInstanceType;
     else static if (is(typeof(&callable!()) TemplateInstanceType))
-        enum bool isCallable = isCallable!TemplateInstanceType;
+        enum bool is_callable = is_callable!TemplateInstanceType;
     else
-        enum bool isCallable = isSomeFunction!callable;
+        enum bool is_callable = is_some_function!callable;
 }
 
 
@@ -79,7 +79,7 @@ template Unqual(T : const U, U)
 
 template Unsigned(T)
 {
-    static if (isUnsigned!T)
+    static if (is_unsigned!T)
         alias Unsigned = T;
     else static if (is(T == long))
         alias Unsigned = ulong;
@@ -113,7 +113,7 @@ template Unsigned(T)
 
 template Signed(T)
 {
-    static if (isSigned!T)
+    static if (is_signed!T)
         alias Unsigned = T;
     else static if (is(T == ulong))
         alias Signed = long;
@@ -144,7 +144,7 @@ template Signed(T)
 }
 
 template ReturnType(alias func)
-    if (isCallable!func)
+    if (is_callable!func)
 {
     static if (is(FunctionTypeOf!func R == return))
         alias ReturnType = R;
@@ -153,7 +153,7 @@ template ReturnType(alias func)
 }
 
 template Parameters(alias func)
-    if (isCallable!func)
+    if (is_callable!func)
 {
     static if (is(FunctionTypeOf!func P == function))
         alias Parameters = P;
@@ -161,26 +161,26 @@ template Parameters(alias func)
         static assert(0, "argument has no parameters");
 }
 
-template ParameterIdentifierTuple(alias func)
-    if (isCallable!func)
+template parameter_identifier_tuple(alias func)
+    if (is_callable!func)
 {
     static if (is(FunctionTypeOf!func PT == __parameters))
     {
-        alias ParameterIdentifierTuple = AliasSeq!();
+        alias parameter_identifier_tuple = AliasSeq!();
         static foreach (i; 0 .. PT.length)
         {
-            static if (!isFunctionPointer!func && !isDelegate!func
+            static if (!is_function_pointer!func && !is_delegate!func
                        // Unnamed parameters yield CT error.
                        && is(typeof(__traits(identifier, PT[i .. i+1])))
                            // Filter out unnamed args, which look like (Type) instead of (Type name).
                            && PT[i].stringof != PT[i .. i+1].stringof[1..$-1])
             {
-                ParameterIdentifierTuple = AliasSeq!(ParameterIdentifierTuple,
+                parameter_identifier_tuple = AliasSeq!(parameter_identifier_tuple,
                                                      __traits(identifier, PT[i .. i+1]));
             }
             else
             {
-                ParameterIdentifierTuple = AliasSeq!(ParameterIdentifierTuple, "");
+                parameter_identifier_tuple = AliasSeq!(parameter_identifier_tuple, "");
             }
         }
     }
@@ -188,12 +188,12 @@ template ParameterIdentifierTuple(alias func)
     {
         static assert(0, func.stringof ~ " is not a function");
         // avoid pointless errors
-        alias ParameterIdentifierTuple = AliasSeq!();
+        alias parameter_identifier_tuple = AliasSeq!();
     }
 }
 
 template FunctionTypeOf(alias func)
-    if (isCallable!func)
+    if (is_callable!func)
 {
     static if ((is(typeof(& func) Fsym : Fsym*) && is(Fsym == function)) || is(typeof(& func) Fsym == delegate))
         alias FunctionTypeOf = Fsym; // HIT: (nested) function symbol
@@ -218,27 +218,27 @@ template FunctionTypeOf(alias func)
 }
 
 // is T a primitive/builtin type?
-enum isPrimitive(T) = isIntegral!T || isSomeFloat!T || (isEnum!T && isPrimitive!(enumType!T) ||
-                      is(T == P*, P) || is(T == S[], S) || (is(T == A[N], A, size_t N) && isPrimitive!A) ||
+enum is_primitive(T) = is_integral!T || is_some_float!T || (is_enum!T && is_primitive!(EnumType!T) ||
+                      is(T == P*, P) || is(T == S[], S) || (is(T == A[N], A, size_t N) && is_primitive!A) ||
                       is(T == R function(Args), R, Args...) || is(T == R delegate(Args), R, Args...));
 
-enum isDefaultConstructible(T) = isPrimitive!T || (is(T == struct) && __traits(compiles, { T t; }));
+enum is_default_constructible(T) = is_primitive!T || (is(T == struct) && __traits(compiles, { T t; }));
 
-enum isConstructible(T, Args...) = (isPrimitive!T && (Args.length == 0 || (Args.length == 1 && is(Args[0] : T)))) ||
+enum is_constructible(T, Args...) = (is_primitive!T && (Args.length == 0 || (Args.length == 1 && is(Args[0] : T)))) ||
                                    (is(T == struct) && __traits(compiles, (Args args) { T x = T(args); })); // this probably fails if the struct can't be assigned to x... TODO: use placement new?
 
 // TODO: we need to know it's not calling an elaborate constructor...
-//enum isTriviallyConstructible(T, Args...) = (isPrimitive!T && (Args.length == 0 || (Args.length == 1 && is(Args[0] : T)))) ||
-//                                            (is(T == struct) && __traits(compiles, (Args args) { auto x = T(args); })); // this probably fails if the struct can't be assigned to x... TODO: use placement new?
+//enum is_trivially_constructible(T, Args...) = (is_primitive!T && (Args.length == 0 || (Args.length == 1 && is(Args[0] : T)))) ||
+//                                              (is(T == struct) && __traits(compiles, (Args args) { auto x = T(args); })); // this probably fails if the struct can't be assigned to x... TODO: use placement new?
 
-//enum isCopyConstructible(T) = isPrimitive!T || (is(T == struct) && __traits(compiles, { T u = lvalueOf!T; }));
-//enum isMoveConstructible(T) = isPrimitive!T || (is(T == struct) && __traits(compiles, { T u = rvalueOf!T; }));
+//enum is_copy_constructible(T) = is_primitive!T || (is(T == struct) && __traits(compiles, { T u = lvalue_of!T; }));
+//enum is_move_constructible(T) = is_primitive!T || (is(T == struct) && __traits(compiles, { T u = rvalue_of!T; }));
 
-enum isTriviallyDefaultConstructible(T) = isDefaultConstructible!T; // dlang doesn't have elaborate default constructors (YET...)
-//enum isTriviallyCopyConstructible(T) = isPrimitive!T; // TODO: somehow find out if there is no copy constructor
-//enum isTriviallyMoveConstructible(T) = isPrimitive!T || is(T == struct); // TODO: somehow find out if there is no move constructor
+enum is_trivially_default_constructible(T) = is_default_constructible!T; // dlang doesn't have elaborate default constructors (YET...)
+//enum is_trivially_copy_constructible(T) = is_primitive!T; // TODO: somehow find out if there is no copy constructor
+//enum is_trivially_move_constructible(T) = is_primitive!T || is(T == struct); // TODO: somehow find out if there is no move constructor
 
 // helpers to test certain expressions
 private struct __InoutWorkaroundStruct{}
-@property T rvalueOf(T)(inout __InoutWorkaroundStruct = __InoutWorkaroundStruct.init) pure nothrow @nogc;
-@property ref T lvalueOf(T)(inout __InoutWorkaroundStruct = __InoutWorkaroundStruct.init) pure nothrow @nogc;
+@property T rvalue_of(T)(inout __InoutWorkaroundStruct = __InoutWorkaroundStruct.init) pure nothrow @nogc;
+@property ref T lvalue_of(T)(inout __InoutWorkaroundStruct = __InoutWorkaroundStruct.init) pure nothrow @nogc;

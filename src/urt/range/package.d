@@ -8,13 +8,13 @@ template map(fun...)
 {
     /**
     Params:
-        r = an $(REF_ALTTEXT input range, isInputRange, std,range,primitives)
+        r = an $(REF_ALTTEXT input range, is_input_range, std,range,primitives)
     Returns:
         A range with each fun applied to all the elements. If there is more than one
         fun, the element type will be `Tuple` containing one element for each fun.
      */
     auto map(Range)(Range r)
-        if (isInputRange!(Unqual!Range))
+        if (is_input_range!(Unqual!Range))
     {
         import urt.meta : AliasSeq, STATIC_MAP;
 
@@ -56,7 +56,7 @@ private struct MapResult(alias fun, Range)
     alias R = Unqual!Range;
     R _input;
 
-    static if (isBidirectionalRange!R)
+    static if (is_bidirectional_range!R)
     {
         @property auto ref back()()
         {
@@ -101,7 +101,7 @@ private struct MapResult(alias fun, Range)
         return fun(_input.front);
     }
 
-    static if (isRandomAccessRange!R)
+    static if (is_random_access_range!R)
     {
         static if (is(typeof(Range.init[ulong.max])))
             private alias opIndex_t = ulong;
@@ -147,7 +147,7 @@ private struct MapResult(alias fun, Range)
         }
     }
 
-    static if (isForwardRange!R)
+    static if (is_forward_range!R)
     {
         @property auto save()
         {
@@ -189,10 +189,10 @@ template reduce(fun...)
         if (isIterable!R)
     {
         import std.exception : enforce;
-        alias E = Select!(isInputRange!R, ElementType!R, ForeachType!R);
+        alias E = Select!(is_input_range!R, ElementType!R, ForeachType!R);
         alias Args = STATIC_MAP!(ReduceSeedType!E, binfuns);
 
-        static if (isInputRange!R)
+        static if (is_input_range!R)
         {
             // no need to throw if range is statically known to be non-empty
             static if (!__traits(compiles,
@@ -259,7 +259,7 @@ template reduce(fun...)
         import std.algorithm.internal : algoFormat;
         static assert(Args.length == fun.length,
             algoFormat("Seed %s does not have the correct amount of fields (should be %s)", Args.stringof, fun.length));
-        alias E = Select!(isInputRange!R, ElementType!R, ForeachType!R);
+        alias E = Select!(is_input_range!R, ElementType!R, ForeachType!R);
 
         static if (mustInitialize)
             bool initialized = false;
@@ -309,7 +309,7 @@ template fold(fun...)
 {
     /**
     Params:
-    r = the $(REF_ALTTEXT input range, isInputRange, std,range,primitives) to fold
+    r = the $(REF_ALTTEXT input range, is_input_range, std,range,primitives) to fold
     seeds = the initial values of each accumulator (optional), one for each predicate
     Returns:
     Either the accumulated result for a single predicate, or a

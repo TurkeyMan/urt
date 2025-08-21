@@ -326,7 +326,7 @@ Variant parse_node(ref const(char)[] text)
             r.flags = Variant.Flags.Map;
         return r;
     }
-    else if (text[0].isNumeric || (text[0] == '-' && text.length > 1 && text[1].isNumeric))
+    else if (text[0].is_numeric || (text[0] == '-' && text.length > 1 && text[1].is_numeric))
     {
         bool neg = text[0] == '-';
         size_t taken = void;

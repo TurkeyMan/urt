@@ -53,28 +53,28 @@ template static_index_of(args...)
     }();
 }
 
-template InterleaveSeparator(alias sep, Args...)
+template INTERLEAVE_SEPARATOR(alias sep, Args...)
 {
-    alias InterleaveSeparator = AliasSeq!();
+    alias INTERLEAVE_SEPARATOR = AliasSeq!();
     static foreach (i, A; Args)
         static if (i > 0)
-            InterleaveSeparator = AliasSeq!(InterleaveSeparator, sep, A);
+            INTERLEAVE_SEPARATOR = AliasSeq!(INTERLEAVE_SEPARATOR, sep, A);
         else
-            InterleaveSeparator = AliasSeq!(A);
+            INTERLEAVE_SEPARATOR = AliasSeq!(A);
 }
 
 
-template EnumKeys(E)
+template enum_keys(E)
 {
-    static assert(is(E == enum), "EnumKeys only works with enums!");
-    __gshared immutable string[EnumStrings.length] EnumKeys = [ EnumStrings ];
-    private alias EnumStrings = __traits(allMembers, E);
+    static assert(is(E == enum), "enum_keys only works with enums!");
+    __gshared immutable string[enum_strings.length] enum_keys = [ enum_strings ];
+    private alias enum_strings = __traits(allMembers, E);
 }
 
 E enum_from_string(E)(const(char)[] key)
     if (is(E == enum))
 {
-    foreach (i, k; EnumKeys!E)
+    foreach (i, k; enum_keys!E)
         if (key[] == k[])
             return cast(E)i;
     return cast(E)-1;

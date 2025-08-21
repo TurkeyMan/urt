@@ -69,7 +69,7 @@ ptrdiff_t icmp(const(char)[] a, const(char)[] b) pure nothrow @nogc
         return a.length - b.length;
     for (size_t i = 0; i < a.length; ++i)
     {
-        ptrdiff_t diff = toLower(a[i]) - toLower(b[i]);
+        ptrdiff_t diff = to_lower(a[i]) - to_lower(b[i]);
         if (diff)
             return diff;
     }
@@ -98,12 +98,12 @@ inout(char)[] trim(bool Front = true, bool Back = true)(inout(char)[] s) pure no
     size_t first = 0, last = s.length;
     static if (Front)
     {
-        while (first < s.length && isWhitespace(s.ptr[first]))
+        while (first < s.length && is_whitespace(s.ptr[first]))
             ++first;
     }
     static if (Back)
     {
-        while (last > first && isWhitespace(s.ptr[last - 1]))
+        while (last > first && is_whitespace(s.ptr[last - 1]))
             --last;
     }
     return s.ptr[first .. last];
@@ -274,9 +274,9 @@ char[] unEscape(char[] s) pure nothrow @nogc
 
 char[] toHexString(const(void[]) data, char[] buffer, uint group = 0, uint secondaryGroup = 0, const(char)[] seps = " -") pure nothrow @nogc
 {
-    import urt.util : isPowerOf2;
-    assert(group.isPowerOf2);
-    assert(secondaryGroup.isPowerOf2);
+    import urt.util : is_power_of_2;
+    assert(group.is_power_of_2);
+    assert(secondaryGroup.is_power_of_2);
     assert((secondaryGroup == 0 && seps.length > 0) || seps.length > 1, "Secondary grouping requires additional separator");
 
     if (data.length == 0)
@@ -296,8 +296,8 @@ char[] toHexString(const(void[]) data, char[] buffer, uint group = 0, uint secon
     size_t offset = 0;
     for (size_t i = 0; true; )
     {
-        buffer[offset++] = hexDigits[src[i] >> 4];
-        buffer[offset++] = hexDigits[src[i] & 0xF];
+        buffer[offset++] = hex_digits[src[i] >> 4];
+        buffer[offset++] = hex_digits[src[i] & 0xF];
 
         bool sep = (i & mask) == mask;
         if (++i == data.length)

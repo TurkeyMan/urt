@@ -70,14 +70,14 @@ nothrow @nogc:
 
 size_t parse_ansi_code(const(char)[] text)
 {
-    import urt.string.ascii : isNumeric;
+    import urt.string.ascii : is_numeric;
 
     if (text.length < 3 || text[0] != '\x1b')
         return 0;
     if (text[1] != '[' && text[1] != 'O')
         return 0;
     size_t i = 2;
-    for (; i < text.length && (text[i].isNumeric || text[i] == ';'); ++i)
+    for (; i < text.length && (text[i].is_numeric || text[i] == ';'); ++i)
     {}
     if (i == text.length)
         return 0;

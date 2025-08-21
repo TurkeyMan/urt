@@ -626,7 +626,7 @@ nothrow @nogc:
     ref MutableString!Embed insert(Things...)(size_t offset, auto ref Things things)
     {
         import urt.string.format : _concat = concat;
-        import urt.util : max, nextPowerOf2;
+        import urt.util : max, next_power_of_2;
 
         char* oldPtr = ptr;
         size_t oldLen = length();
@@ -638,7 +638,7 @@ nothrow @nogc:
         debug assert(newLen <= MaxStringLen, "String too long");
 
         size_t oldAlloc = allocated();
-        ptr = newLen <= oldAlloc ? oldPtr : allocStringBuffer(max(16, cast(ushort)newLen + 4).nextPowerOf2 - 4);
+        ptr = newLen <= oldAlloc ? oldPtr : allocStringBuffer(max(16, cast(ushort)newLen + 4).next_power_of_2 - 4);
         memmove(ptr + offset + insertLen, oldPtr + offset, oldLen - offset);
         _concat(ptr[offset .. offset + insertLen], forward!things);
         writeLength(newLen);
@@ -654,7 +654,7 @@ nothrow @nogc:
     ref MutableString!Embed insertFormat(Things...)(size_t offset, auto ref Things things)
     {
         import urt.string.format : _format = format;
-        import urt.util : max, nextPowerOf2;
+        import urt.util : max, next_power_of_2;
 
         char* oldPtr = ptr;
         size_t oldLen = length();
@@ -666,7 +666,7 @@ nothrow @nogc:
         debug assert(newLen <= MaxStringLen, "String too long");
 
         size_t oldAlloc = allocated();
-        ptr = newLen <= oldAlloc ? oldPtr : allocStringBuffer(max(16, cast(ushort)newLen + 4).nextPowerOf2 - 4);
+        ptr = newLen <= oldAlloc ? oldPtr : allocStringBuffer(max(16, cast(ushort)newLen + 4).next_power_of_2 - 4);
         memmove(ptr + offset + insertLen, oldPtr + offset, oldLen - offset);
         _format(ptr[offset .. offset + insertLen], forward!things);
         writeLength(newLen);

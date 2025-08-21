@@ -2,7 +2,7 @@ module urt.fibre;
 
 import urt.mem;
 import urt.time;
-import urt.util : isAligned, max;
+import urt.util : is_aligned, max;
 
 version (Windows)
     version = UseWindowsFibreAPI;
@@ -49,7 +49,7 @@ struct Fibre
             mainFibre = co_active();
 
         // TODO: i think it's a bug that this stuff isn't initialised!
-        isDelegate = false;
+        is_delegate = false;
         abortRequested = false;
         finished = true; // init in a state ready to be recycled...
         aborted = false;
@@ -62,7 +62,7 @@ struct Fibre
             while (true)
             {
                 try {
-                    if (thisFibre.isDelegate)
+                    if (thisFibre.is_delegate)
                     {
                         FibreEntryDelegate dg;
                         dg.ptr = thisFibre.userData;
@@ -104,7 +104,7 @@ struct Fibre
     {
         this(cast(FibreEntryFunc)fibreEntry.funcptr, yieldHandler, fibreEntry.ptr, stackSize);
 
-        isDelegate = true;
+        is_delegate = true;
     }
 
     this(FibreEntryFunc fibreEntry, YieldHandler yieldHandler, void* userData = null, size_t stackSize = DefaultStackSize) nothrow
@@ -151,7 +151,7 @@ struct Fibre
 
         this.fibreEntry = cast(FibreEntryFunc)fibreEntry.funcptr;
         userData = fibreEntry.ptr;
-        isDelegate = true;
+        is_delegate = true;
         abortRequested = false;
         finished = false;
         aborted = false;
@@ -163,7 +163,7 @@ struct Fibre
 
         this.fibreEntry = fibreEntry;
         this.userData = userData;
-        isDelegate = false;
+        is_delegate = false;
         abortRequested = false;
         finished = false;
         aborted = false;
@@ -198,7 +198,7 @@ private:
     YieldHandler yieldHandler;
 
     cothread_t fibre;
-    bool isDelegate;
+    bool is_delegate;
     bool abortRequested;
     bool finished;
     bool aborted;
@@ -570,7 +570,7 @@ else
 
         void co_init_stack(void* base, void* top, coentry_t entry)
         {
-            assert(isAligned!16(base) && isAligned!16(top), "Stack must be aligned to 16 bytes");
+            assert(is_aligned!16(base) && is_aligned!16(top), "Stack must be aligned to 16 bytes");
 
             void** sp = cast(void**)top;    // seek to top of stack
             *--sp = &crash;                 // crash if entrypoint returns
@@ -741,7 +741,7 @@ else
 
         void co_init_stack(void* base, void* top, coentry_t entry)
         {
-            assert(isAligned!16(base) && isAligned!16(top), "Stack must be aligned to 16 bytes");
+            assert(is_aligned!16(base) && is_aligned!16(top), "Stack must be aligned to 16 bytes");
 
             void** p = cast(void**)base;
             p[8] = cast(void*)top;  // starting sp
@@ -804,7 +804,7 @@ else
 
         void co_init_stack(void* base, void* top, coentry_t entry)
         {
-            assert(isAligned!16(base) && isAligned!16(top), "Stack must be aligned to 16 bytes");
+            assert(is_aligned!16(base) && is_aligned!16(top), "Stack must be aligned to 16 bytes");
 
             void** p = cast(void**)base;
             p[0]  = cast(void*)top; // x16 (stack pointer)

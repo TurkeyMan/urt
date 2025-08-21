@@ -3,16 +3,16 @@ module urt.string.uni;
 nothrow @nogc:
 
 
-size_t uniConvert(const(char)[] s, wchar[] buffer)
+size_t uni_convert(const(char)[] s, wchar[] buffer)
 {
     const(char)* p = s.ptr;
     const(char)* pend = p + s.length;
     wchar* b = buffer.ptr;
-    wchar* bEnd = buffer.ptr + buffer.length;
+    wchar* bend = buffer.ptr + buffer.length;
 
     while (p < pend)
     {
-        if (b >= bEnd)
+        if (b >= bend)
             return 0; // End of output buffer
         if ((*p & 0x80) == 0) // 1-byte sequence: 0xxxxxxx
             *b++ = *p++;
@@ -32,7 +32,7 @@ size_t uniConvert(const(char)[] s, wchar[] buffer)
         }
         else if ((*p & 0xF8) == 0xF0) // 4-byte sequence: 11110xxx 10xxxxxx 10xxxxxx 10xxxxxx
         {
-            if (p + 3 >= pend || b + 1 >= bEnd)
+            if (p + 3 >= pend || b + 1 >= bend)
                 return 0; // Unexpected end of input/output
             dchar codepoint = ((p[0] & 0x07) << 18) | ((p[1] & 0x3F) << 12) | ((p[2] & 0x3F) << 6) | (p[3] & 0x3F);
             codepoint -= 0x10000;
@@ -47,16 +47,16 @@ size_t uniConvert(const(char)[] s, wchar[] buffer)
     return b - buffer.ptr;
 }
 
-size_t uniConvert(const(char)[] s, dchar[] buffer)
+size_t uni_convert(const(char)[] s, dchar[] buffer)
 {
     const(char)* p = s.ptr;
     const(char)* pend = p + s.length;
     dchar* b = buffer.ptr;
-    dchar* bEnd = buffer.ptr + buffer.length;
+    dchar* bend = buffer.ptr + buffer.length;
 
     while (p < pend)
     {
-        if (b >= bEnd)
+        if (b >= bend)
             return 0;
         if ((*p & 0x80) == 0) // 1-byte sequence: 0xxxxxxx
             *b++ = *p++;
@@ -84,16 +84,16 @@ size_t uniConvert(const(char)[] s, dchar[] buffer)
     return b - buffer.ptr;
 }
 
-size_t uniConvert(const(wchar)[] s, char[] buffer)
+size_t uni_convert(const(wchar)[] s, char[] buffer)
 {
     const(wchar)* p = s.ptr;
     const(wchar)* pend = p + s.length;
     char* b = buffer.ptr;
-    char* bEnd = buffer.ptr + buffer.length;
+    char* bend = buffer.ptr + buffer.length;
 
     while (p < pend)
     {
-        if (b >= bEnd)
+        if (b >= bend)
             return 0; // End of output buffer
         if (p[0] >= 0xD800)
         {
@@ -103,7 +103,7 @@ size_t uniConvert(const(wchar)[] s, char[] buffer)
                 return 0; // Unexpected end of input
             if (p[0] < 0xDC00) // Surrogate pair: 110110xxxxxxxxxx 110111xxxxxxxxxx
             {
-                if (b + 3 >= bEnd)
+                if (b + 3 >= bend)
                     return 0; // End of output buffer
                 dchar codepoint = 0x10000 + ((p[0] - 0xD800) << 10) + (p[1] - 0xDC00);
                 b[0] = 0xF0 | (codepoint >> 18);
@@ -120,7 +120,7 @@ size_t uniConvert(const(wchar)[] s, char[] buffer)
             *b++ = cast(char)*p++;
         else if (*p < 0x800) // 2-byte sequence: 110xxxxx 10xxxxxx
         {
-            if (b + 1 >= bEnd)
+            if (b + 1 >= bend)
                 return 0; // End of output buffer
             b[0] = 0xC0 | cast(char)(*p >> 6);
             b[1] = 0x80 | (*p++ & 0x3F);
@@ -129,7 +129,7 @@ size_t uniConvert(const(wchar)[] s, char[] buffer)
         else // 3-byte sequence: 1110xxxx 10xxxxxx 10xxxxxx
         {
         three_byte_seq:
-            if (b + 2 >= bEnd)
+            if (b + 2 >= bend)
                 return 0; // End of output buffer
             b[0] = 0xE0 | (*p >> 12);
             b[1] = 0x80 | ((*p >> 6) & 0x3F);
@@ -140,16 +140,16 @@ size_t uniConvert(const(wchar)[] s, char[] buffer)
     return b - buffer.ptr;
 }
 
-size_t uniConvert(const(wchar)[] s, dchar[] buffer)
+size_t uni_convert(const(wchar)[] s, dchar[] buffer)
 {
     const(wchar)* p = s.ptr;
     const(wchar)* pend = p + s.length;
     dchar* b = buffer.ptr;
-    dchar* bEnd = buffer.ptr + buffer.length;
+    dchar* bend = buffer.ptr + buffer.length;
 
     while (p < pend)
     {
-        if (b >= bEnd)
+        if (b >= bend)
             return 0; // End of output buffer
         if (p[0] >= 0xD800 && p[0] < 0xE000)
         {
@@ -168,22 +168,22 @@ size_t uniConvert(const(wchar)[] s, dchar[] buffer)
     return b - buffer.ptr;
 }
 
-size_t uniConvert(const(dchar)[] s, char[] buffer)
+size_t uni_convert(const(dchar)[] s, char[] buffer)
 {
     const(dchar)* p = s.ptr;
     const(dchar)* pend = p + s.length;
     char* b = buffer.ptr;
-    char* bEnd = buffer.ptr + buffer.length;
+    char* bend = buffer.ptr + buffer.length;
 
     while (p < pend)
     {
-        if (b >= bEnd)
+        if (b >= bend)
             return 0; // End of output buffer
         if (*p < 0x80) // 1-byte sequence: 0xxxxxxx
             *b++ = cast(char)*p++;
         else if (*p < 0x800) // 2-byte sequence: 110xxxxx 10xxxxxx
         {
-            if (b + 1 >= bEnd)
+            if (b + 1 >= bend)
                 return 0; // End of output buffer
             b[0] = 0xC0 | cast(char)(*p >> 6);
             b[1] = 0x80 | (*p++ & 0x3F);
@@ -191,7 +191,7 @@ size_t uniConvert(const(dchar)[] s, char[] buffer)
         }
         else if (*p < 0x10000) // 3-byte sequence: 1110xxxx 10xxxxxx 10xxxxxx
         {
-            if (b + 2 >= bEnd)
+            if (b + 2 >= bend)
                 return 0; // End of output buffer
             b[0] = 0xE0 | cast(char)(*p >> 12);
             b[1] = 0x80 | ((*p >> 6) & 0x3F);
@@ -200,7 +200,7 @@ size_t uniConvert(const(dchar)[] s, char[] buffer)
         }
         else if (*p < 0x110000) // 4-byte sequence: 11110xxx 10xxxxxx 10xxxxxx 10xxxxxx
         {
-            if (b + 3 >= bEnd)
+            if (b + 3 >= bend)
                 return 0; // End of output buffer
             b[0] = 0xF0 | (*p >> 18);
             b[1] = 0x80 | ((*p >> 12) & 0x3F);
@@ -214,22 +214,22 @@ size_t uniConvert(const(dchar)[] s, char[] buffer)
     return b - buffer.ptr;
 }
 
-size_t uniConvert(const(dchar)[] s, wchar[] buffer)
+size_t uni_convert(const(dchar)[] s, wchar[] buffer)
 {
     const(dchar)* p = s.ptr;
     const(dchar)* pend = p + s.length;
     wchar* b = buffer.ptr;
-    wchar* bEnd = buffer.ptr + buffer.length;
+    wchar* bend = buffer.ptr + buffer.length;
 
     while (p < pend)
     {
-        if (b >= bEnd)
+        if (b >= bend)
             return 0; // End of output buffer
         if (*p < 0x10000)
             *b++ = cast(wchar)*p++;
         else if (*p < 0x110000)
         {
-            if (b + 1 >= bEnd)
+            if (b + 1 >= bend)
                 return 0; // End of output buffer
             dchar codepoint = *p++ - 0x10000;
             b[0] = 0xD800 | (codepoint >> 10);
@@ -244,7 +244,7 @@ size_t uniConvert(const(dchar)[] s, wchar[] buffer)
 
 unittest
 {
-    immutable dstring unicodeTest = 
+    immutable dstring unicode_test = 
         "Basic ASCII: Hello, World!\n" ~
         "BMP Examples: 你好, مرحبا, שלום, 😊, ☂️\n" ~
         "Supplementary Planes: 𐍈, 𝒜, 🀄, 🚀\n" ~
@@ -257,18 +257,18 @@ unittest
         "U+E000–U+FFFF Range:  (U+E000), 豈 (U+F900)" ~
         "Control Characters: \u0008 \u001B \u0000\n";
 
-    char[1024] utf8Buffer;
-    wchar[512] utf16Buffer;
-    dchar[512] utf32Buffer;
+    char[1024] utf8_buffer;
+    wchar[512] utf16_buffer;
+    dchar[512] utf32_buffer;
 
     // test all conversions with characters in every significant value range
-    size_t utf8Len = uniConvert(unicodeTest, utf8Buffer);                // D-C
-    size_t utf16Len = uniConvert(utf8Buffer[0..utf8Len], utf16Buffer);   // C-W
-    size_t utf32Len = uniConvert(utf16Buffer[0..utf16Len], utf32Buffer); // W-D
-    utf16Len = uniConvert(utf32Buffer[0..utf32Len], utf16Buffer);        // D-W
-    utf8Len = uniConvert(utf16Buffer[0..utf16Len], utf8Buffer);          // W-C
-    utf32Len = uniConvert(utf8Buffer[0..utf8Len], utf32Buffer);          // C-D
-    assert(unicodeTest[] == utf32Buffer[0..utf32Len]);
+    size_t utf8_len = uni_convert(unicode_test, utf8_buffer);                // D-C
+    size_t utf16_len = uni_convert(utf8_buffer[0..utf8_len], utf16_buffer);   // C-W
+    size_t utf32_len = uni_convert(utf16_buffer[0..utf16_len], utf32_buffer); // W-D
+    utf16_len = uni_convert(utf32_buffer[0..utf32_len], utf16_buffer);        // D-W
+    utf8_len = uni_convert(utf16_buffer[0..utf16_len], utf8_buffer);          // W-C
+    utf32_len = uni_convert(utf8_buffer[0..utf8_len], utf32_buffer);          // C-D
+    assert(unicode_test[] == utf32_buffer[0..utf32_len]);
 
     // TODO: test all the error cases; invalid characters, buffer overflows, truncated inputs, etc...
     //...

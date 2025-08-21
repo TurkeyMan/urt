@@ -9,8 +9,8 @@ template Nullable(T)
 {
     struct Nullable
     {
-        enum T NullValue = null;
-        T value = NullValue;
+        enum T null_value = null;
+        T value = null_value;
 
         this(T v)
         {
@@ -18,7 +18,7 @@ template Nullable(T)
         }
 
         bool opCast(T : bool)() const
-            => value !is NullValue;
+            => value !is null_value;
 
         bool opEquals(typeof(null)) const
             => value is null;
@@ -42,16 +42,16 @@ template Nullable(T)
 }
 
 template Nullable(T)
-    if (isBoolean!T)
+    if (is_boolean!T)
 {
     struct Nullable
     {
-        enum ubyte NullValue = 0xFF;
-        private ubyte _value = NullValue;
+        enum ubyte null_value = 0xFF;
+        private ubyte _value = null_value;
 
         this(typeof(null))
         {
-            _value = NullValue;
+            _value = null_value;
         }
         this(T v)
         {
@@ -62,27 +62,27 @@ template Nullable(T)
             => _value == 1;
 
         bool opCast(T : bool)() const
-            => _value != NullValue;
+            => _value != null_value;
 
         bool opEquals(typeof(null)) const
-            => _value == NullValue;
+            => _value == null_value;
         bool opEquals(T v) const
             => _value == cast(ubyte)v;
 
         void opAssign(typeof(null))
         {
-            _value = NullValue;
+            _value = null_value;
         }
         void opAssign(U)(U v)
             if (is(U : T))
         {
-            assert(v != NullValue);
+            assert(v != null_value);
             _value = cast(ubyte)v;
         }
 
         ptrdiff_t toString(char[] buffer, const(char)[] format, const(FormatArg)[] formatArgs) const nothrow @nogc
         {
-            if (value == NullValue)
+            if (value == null_value)
                 return formatValue(null, buffer, format, formatArgs);
             else
                 return formatValue(value, buffer, format, formatArgs);
@@ -91,16 +91,16 @@ template Nullable(T)
 }
 
 template Nullable(T)
-    if (isSomeInt!T)
+    if (is_some_int!T)
 {
     struct Nullable
     {
-        enum T NullValue = isSignedInt!T ? T.min : T.max;
-        T value = NullValue;
+        enum T null_value = is_signed_int!T ? T.min : T.max;
+        T value = null_value;
 
         this(typeof(null))
         {
-            value = NullValue;
+            value = null_value;
         }
         this(T v)
         {
@@ -108,27 +108,27 @@ template Nullable(T)
         }
 
         bool opCast(T : bool)() const
-            => value != NullValue;
+            => value != null_value;
 
         bool opEquals(typeof(null)) const
-            => value == NullValue;
+            => value == null_value;
         bool opEquals(T v) const
-            => value != NullValue && value == v;
+            => value != null_value && value == v;
 
         void opAssign(typeof(null))
         {
-            value = NullValue;
+            value = null_value;
         }
         void opAssign(U)(U v)
             if (is(U : T))
         {
-            assert(v != NullValue);
+            assert(v != null_value);
             value = v;
         }
 
         ptrdiff_t toString(char[] buffer, const(char)[] format, const(FormatArg)[] formatArgs) const nothrow @nogc
         {
-            if (value == NullValue)
+            if (value == null_value)
                 return formatValue(null, buffer, format, formatArgs);
             else
                 return formatValue(value, buffer, format, formatArgs);
@@ -137,16 +137,16 @@ template Nullable(T)
 }
 
 template Nullable(T)
-    if (isSomeFloat!T)
+    if (is_some_float!T)
 {
     struct Nullable
     {
-        enum T NullValue = T.nan;
-        T value = NullValue;
+        enum T null_value = T.nan;
+        T value = null_value;
 
         this(typeof(null))
         {
-            value = NullValue;
+            value = null_value;
         }
         this(T v)
         {
@@ -154,16 +154,16 @@ template Nullable(T)
         }
 
         bool opCast(T : bool)() const
-            => value !is NullValue;
+            => value !is null_value;
 
         bool opEquals(typeof(null)) const
-            => value is NullValue;
+            => value is null_value;
         bool opEquals(T v) const
             => value == v; // because nan doesn't compare with anything
 
         void opAssign(typeof(null))
         {
-            value = NullValue;
+            value = null_value;
         }
         void opAssign(U)(U v)
             if (is(U : T))
@@ -173,7 +173,7 @@ template Nullable(T)
 
         ptrdiff_t toString(char[] buffer, const(char)[] format, const(FormatArg)[] formatArgs) const nothrow @nogc
         {
-            if (value is NullValue)
+            if (value is null_value)
                 return formatValue(null, buffer, format, formatArgs);
             else
                 return formatValue(value, buffer, format, formatArgs);
@@ -189,42 +189,42 @@ template Nullable(T)
     struct Nullable
     {
         T value = void;
-        bool isValue = false;
+        bool is_value = false;
 
         this(typeof(null))
         {
-            isValue = false;
+            is_value = false;
         }
         this(T v)
         {
             moveEmplace(v, value);
-            isValue = true;
+            is_value = true;
         }
 
         ~this()
         {
-            if (isValue)
+            if (is_value)
                 value.destroy();
         }
 
         bool opCast(T : bool)() const
-            => isValue;
+            => is_value;
 
         bool opEquals(typeof(null)) const
-            => !isValue;
+            => !is_value;
         bool opEquals(T v) const
-            => isValue && value == v;
+            => is_value && value == v;
 
         void opAssign(typeof(null))
         {
-            if (isValue)
+            if (is_value)
                 value.destroy();
-            isValue = false;
+            is_value = false;
         }
         void opAssign(U)(U v)
             if (is(U : T))
         {
-            if (!isValue)
+            if (!is_value)
                 moveEmplace(v, value);
             else
                 value = v;
@@ -232,7 +232,7 @@ template Nullable(T)
 
         ptrdiff_t toString(char[] buffer, const(char)[] format, const(FormatArg)[] formatArgs) const nothrow @nogc
         {
-            if (!isValue)
+            if (!is_value)
                 return formatValue(null, buffer, format, formatArgs);
             else
                 return formatValue(value, buffer, format, formatArgs);
@@ -246,39 +246,39 @@ template Nullable(T)
     struct Nullable
     {
         T value;
-        bool isValue;
+        bool is_value;
 
         this(typeof(null))
         {
-            isValue = false;
+            is_value = false;
         }
         this(T v)
         {
             value = v;
-            isValue = true;
+            is_value = true;
         }
 
         bool opCast(T : bool)() const
-            => isValue;
+            => is_value;
 
         bool opEquals(typeof(null)) const
-            => !isValue;
+            => !is_value;
         bool opEquals(T v) const
-            => isValue && value == v;
+            => is_value && value == v;
 
         void opAssign(typeof(null))
         {
-            isValue = false;
+            is_value = false;
         }
         void opAssign(T v)
         {
             value = v;
-            isValue = true;
+            is_value = true;
         }
 
         ptrdiff_t toString(char[] buffer, const(char)[] format, const(FormatArg)[] formatArgs) const nothrow @nogc
         {
-            if (!isValue)
+            if (!is_value)
                 return formatValue(null, buffer, format, formatArgs);
             else
                 return formatValue(value, buffer, format, formatArgs);

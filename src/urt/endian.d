@@ -4,20 +4,20 @@ import urt.processor;
 import urt.traits;
 
 public import urt.processor : LittleEndian;
-public import urt.util : byteReverse;
+public import urt.util : byte_reverse;
 
 pure nothrow @nogc:
 
 
 // load from byte arrays
 pragma(inline, true) T endianToNative(T, bool little)(ref const ubyte[1] bytes)
-    if (T.sizeof == 1 && isIntegral!T)
+    if (T.sizeof == 1 && is_integral!T)
 {
     return cast(T)bytes[0];
 }
 
 ushort endianToNative(T, bool little)(ref const ubyte[2] bytes)
-    if (T.sizeof == 2 && isIntegral!T)
+    if (T.sizeof == 2 && is_integral!T)
 {
     if (__ctfe || !SupportUnalignedLoadStore)
     {
@@ -33,12 +33,12 @@ ushort endianToNative(T, bool little)(ref const ubyte[2] bytes)
         static if (LittleEndian == little)
             return *cast(ushort*)bytes.ptr;
         else
-            return byteReverse(*cast(ushort*)bytes.ptr);
+            return byte_reverse(*cast(ushort*)bytes.ptr);
     }
 }
 
 uint endianToNative(T, bool little)(ref const ubyte[4] bytes)
-    if (T.sizeof == 4 && isIntegral!T)
+    if (T.sizeof == 4 && is_integral!T)
 {
     if (__ctfe || !SupportUnalignedLoadStore)
     {
@@ -54,12 +54,12 @@ uint endianToNative(T, bool little)(ref const ubyte[4] bytes)
         static if (LittleEndian == little)
             return *cast(uint*)bytes.ptr;
         else
-            return byteReverse(*cast(uint*)bytes.ptr);
+            return byte_reverse(*cast(uint*)bytes.ptr);
     }
 }
 
 ulong endianToNative(T, bool little)(ref const ubyte[8] bytes)
-    if (T.sizeof == 8 && isIntegral!T)
+    if (T.sizeof == 8 && is_integral!T)
 {
     if (__ctfe || !SupportUnalignedLoadStore)
     {
@@ -75,12 +75,12 @@ ulong endianToNative(T, bool little)(ref const ubyte[8] bytes)
         static if (LittleEndian == little)
             return *cast(ulong*)bytes.ptr;
         else
-            return byteReverse(*cast(ulong*)bytes.ptr);
+            return byte_reverse(*cast(ulong*)bytes.ptr);
     }
 }
 
 pragma(inline, true) T endianToNative(T, bool little)(ref const ubyte[T.sizeof] bytes)
-    if (!isIntegral!T && !is(T == struct) && !is(T == U[N], U, size_t N))
+    if (!is_integral!T && !is(T == struct) && !is(T == U[N], U, size_t N))
 {
     import urt.meta : IntForWidth;
     alias U = IntForWidth!(T.sizeof*8);
@@ -156,7 +156,7 @@ ubyte[2] nativeToEndian(bool little)(ushort u)
     static if (SupportUnalignedLoadStore)
     {
         static if (LittleEndian != little)
-            u = byteReverse(u);
+            u = byte_reverse(u);
         else
             pragma(inline, true);
         return *cast(ubyte[2]*)&u;
@@ -176,7 +176,7 @@ ubyte[4] nativeToEndian(bool little)(uint u)
     static if (SupportUnalignedLoadStore)
     {
         static if (LittleEndian != little)
-            u = byteReverse(u);
+            u = byte_reverse(u);
         else
             pragma(inline, true);
         return *cast(ubyte[4]*)&u;
@@ -196,7 +196,7 @@ ubyte[8] nativeToEndian(bool little)(ulong u)
     static if (SupportUnalignedLoadStore)
     {
         static if (LittleEndian != little)
-            u = byteReverse(u);
+            u = byte_reverse(u);
         else
             pragma(inline, true);
         return *cast(ubyte[8]*)&u;
@@ -204,7 +204,7 @@ ubyte[8] nativeToEndian(bool little)(ulong u)
 }
 
 pragma(inline, true) auto nativeToEndian(bool little, T)(T val)
-    if (!isIntegral!T && !is(T == struct) && !is(T == U[N], U, size_t N))
+    if (!is_integral!T && !is(T == struct) && !is(T == U[N], U, size_t N))
 {
     import urt.meta : IntForWidth;
     alias U = IntForWidth!(T.sizeof*8);
@@ -261,36 +261,36 @@ ubyte[T.sizeof] nativeToLittleEndian(T)(auto ref const T data)
 
 // load/store from/to memory
 void storeBigEndian(T)(T* target, const T val)
-    if (isSomeInt!T || is(T == float))
+    if (is_some_int!T || is(T == float))
 {
     version (BigEndian)
         *target = val;
     else
-        *target = byteReverse(val);
+        *target = byte_reverse(val);
 }
 void storeLittleEndian(T)(T* target, const T val)
-    if (isSomeInt!T || is(T == float))
+    if (is_some_int!T || is(T == float))
 {
     version (LittleEndian)
         *target = val;
     else
-        *target = byteReverse(val);
+        *target = byte_reverse(val);
 }
 T loadBigEndian(T)(const(T)* src)
-    if (isSomeInt!T || is(T == float))
+    if (is_some_int!T || is(T == float))
 {
     version (BigEndian)
         return *src;
     else
-        return byteReverse(*src);
+        return byte_reverse(*src);
 }
 T loadLittleEndian(T)(const(T)* src)
-    if (isSomeInt!T || is(T == float))
+    if (is_some_int!T || is(T == float))
 {
     version (LittleEndian)
         return *src;
     else
-        return byteReverse(*src);
+        return byte_reverse(*src);
 }
 
 

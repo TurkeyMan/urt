@@ -6,7 +6,7 @@ import urt.util;
 static Region* makeRegion(void[] mem) pure nothrow @nogc
 {
     assert(mem.length >= Region.sizeof, "Memory block too small");
-    Region* region = cast(Region*)mem.ptr.alignUp(Region.alignof);
+    Region* region = cast(Region*)mem.ptr.align_up(Region.alignof);
     size_t alignBytes = cast(void*)region - mem.ptr;
     if (size_t.sizeof > 4 && mem.length > uint.max + alignBytes + Region.sizeof)
         region.length = uint.max;
@@ -21,7 +21,7 @@ struct Region
     void[] alloc(size_t size, size_t alignment = size_t.sizeof) pure nothrow @nogc
     {
         size_t ptr = cast(size_t)&this + Region.sizeof + offset;
-        size_t alignedPtr = ptr.alignUp(alignment);
+        size_t alignedPtr = ptr.align_up(alignment);
         size_t alignBytes = alignedPtr - ptr;
         if (offset + alignBytes + size > length)
             return null;

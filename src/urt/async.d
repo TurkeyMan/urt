@@ -20,7 +20,7 @@ Promise!(ReturnType!Fun)* async(alias Fun, size_t stackSize = DefaultStackSize, 
 
 // TODO: nice to rework this; maybe make stackSize a not-template-arg, and receive a function call/closure object which stores the args
 Promise!(ReturnType!Fun)* async(size_t stackSize = DefaultStackSize, Fun, Args...)(Fun fun, auto ref Args args)
-    if (isSomeFunction!Fun)
+    if (is_some_function!Fun)
 {
     alias Result = ReturnType!Fun;
     Promise!Result* r = cast(Promise!Result*)defaultAllocator().alloc(Promise!Result.sizeof, Promise!Result.alignof);

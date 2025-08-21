@@ -1,6 +1,6 @@
 module urt.time;
 
-import urt.traits : isSomeFloat;
+import urt.traits : is_some_float;
 
 version (Windows)
 {
@@ -137,7 +137,7 @@ pure nothrow @nogc:
     bool opCast(T : bool)() const
         => ticks != 0;
 
-    T opCast(T)() const if (isSomeFloat!T)
+    T opCast(T)() const if (is_some_float!T)
         => cast(T)ticks / cast(T)ticksPerSecond;
 
     bool opEquals(Duration b) const

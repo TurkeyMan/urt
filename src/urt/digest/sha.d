@@ -105,7 +105,7 @@ ubyte[Context.DigestLen] sha_finalise(Context)(ref Context ctx)
     // reverse all the bytes when copying the final state to the output hash.
     uint[Context.DigestElements] digest = void;
     foreach (uint j; 0 .. Context.DigestElements)
-        digest[j] = byteReverse(ctx.state[j]);
+        digest[j] = byte_reverse(ctx.state[j]);
 
     return cast(ubyte[Context.DigestLen])digest;
 }

@@ -7,8 +7,8 @@ enum Hex(const char[] s) = (){ ubyte[s.length / 2] r; ptrdiff_t len = hex_decode
 enum Base64(const char[] s) = (){ ubyte[base64_decode_length(s)] r; ptrdiff_t len = base64_decode(s, r); assert(len == r.sizeof, "Not a base64 string!"); return r; }();
 
 
-ptrdiff_t base64_encode_length(size_t sourceLength) pure
-    => (sourceLength + 2) / 3 * 4;
+ptrdiff_t base64_encode_length(size_t source_length) pure
+    => (source_length + 2) / 3 * 4;
 
 ptrdiff_t base64_encode(const void[] data, char[] result) pure
 {
@@ -54,8 +54,8 @@ ptrdiff_t base64_encode(const void[] data, char[] result) pure
     return out_len;
 }
 
-ptrdiff_t base64_decode_length(size_t sourceLength) pure
-=> sourceLength / 4 * 3;
+ptrdiff_t base64_decode_length(size_t source_length) pure
+=> source_length / 4 * 3;
 
 ptrdiff_t base64_decode(const char[] data, void[] result) pure
 {
@@ -144,7 +144,7 @@ ptrdiff_t hex_encode(const void[] data, char[] result) pure
 
 ptrdiff_t hex_decode(const char[] data, void[] result) pure
 {
-    import urt.string.ascii : isHex;
+    import urt.string.ascii : is_hex;
 
     if (data.length & 1)
         return -1;
@@ -157,7 +157,7 @@ ptrdiff_t hex_decode(const char[] data, void[] result) pure
     {
         ubyte c0 = data[i];
         ubyte c1 = data[i + 1];
-        if (!c0.isHex || !c1.isHex)
+        if (!c0.is_hex || !c1.is_hex)
             return -1;
 
         if ((c0 | 0x20) >= 'a')
@@ -193,12 +193,12 @@ unittest
 
 ptrdiff_t url_encode_length(const char[] data) pure
 {
-    import urt.string.ascii : isURL;
+    import urt.string.ascii : is_url;
 
     size_t len = 0;
     foreach (c; data)
     {
-        if (c.isURL || c == ' ')
+        if (c.is_url || c == ' ')
             ++len;
         else
             len += 3;
@@ -208,14 +208,14 @@ ptrdiff_t url_encode_length(const char[] data) pure
 
 ptrdiff_t url_encode(const char[] data, char[] result) pure
 {
-    import urt.string.ascii : isURL, hexDigits;
+    import urt.string.ascii : is_url, hex_digits;
 
     size_t j = 0;
 
     for (size_t i = 0; i < data.length; ++i)
     {
         char c = data[i];
-        if (c.isURL || c == ' ')
+        if (c.is_url || c == ' ')
         {
             if (j == result.length)
                 return -1;
@@ -226,8 +226,8 @@ ptrdiff_t url_encode(const char[] data, char[] result) pure
             if (j + 2 == result.length)
                 return -1;
             result[j++] = '%';
-            result[j++] = hexDigits[c >> 4];
-            result[j++] = hexDigits[c & 0xF];
+            result[j++] = hex_digits[c >> 4];
+            result[j++] = hex_digits[c & 0xF];
         }
     }
 
@@ -250,7 +250,7 @@ ptrdiff_t url_decode_length(const char[] data) pure
 
 ptrdiff_t url_decode(const char[] data, char[] result) pure
 {
-    import urt.string.ascii : isHex;
+    import urt.string.ascii : is_hex;
 
     size_t j = 0;
     for (size_t i = 0; i < data.length; ++i)
@@ -268,7 +268,7 @@ ptrdiff_t url_decode(const char[] data, char[] result) pure
 
             ubyte c0 = data[i + 1];
             ubyte c1 = data[i + 2];
-            if (!c0.isHex || !c1.isHex)
+            if (!c0.is_hex || !c1.is_hex)
                 return -1;
             i += 2;
 

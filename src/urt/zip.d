@@ -6,7 +6,7 @@ import urt.hash;
 import urt.mem.allocator;
 import urt.result;
 
-alias zlib_crc = calculate_crc!(Algorithm.CRC32_ISO_HDLC);
+alias zlib_crc = calculate_crc!(Algorithm.crc32_iso_hdlc);
 
 nothrow @nogc:
 
@@ -15,11 +15,11 @@ nothrow @nogc:
 
 enum gzip_flag : ubyte
 {
-    FTEXT    = 1,
-    FHCRC    = 2,
-    FEXTRA   = 4,
-    FNAME    = 8,
-    FCOMMENT = 16
+    ftext    = 1,
+    fhcrc    = 2,
+    fextra   = 4,
+    fname    = 8,
+    fcomment = 16
 }
 
 Result zlib_uncompress(const(void)[] source, void[] dest, out size_t destLen)
@@ -112,7 +112,7 @@ Result gzip_uncompress(const(void)[] source, void[] dest, out size_t destLen)
     const(ubyte)* start = src + 10;
 
     // skip extra data if present
-    if (flg & gzip_flag.FEXTRA)
+    if (flg & gzip_flag.fextra)
     {
         uint xlen = loadLittleEndian!ushort(cast(ushort*)start);
 
@@ -123,7 +123,7 @@ Result gzip_uncompress(const(void)[] source, void[] dest, out size_t destLen)
     }
 
     // skip file name if present
-    if (flg & gzip_flag.FNAME)
+    if (flg & gzip_flag.fname)
     {
         do
         {
@@ -134,7 +134,7 @@ Result gzip_uncompress(const(void)[] source, void[] dest, out size_t destLen)
     }
 
     // skip file comment if present
-    if (flg & gzip_flag.FCOMMENT)
+    if (flg & gzip_flag.fcomment)
     {
         do
         {
@@ -145,7 +145,7 @@ Result gzip_uncompress(const(void)[] source, void[] dest, out size_t destLen)
     }
 
     // check header crc if present
-    if (flg & gzip_flag.FHCRC)
+    if (flg & gzip_flag.fhcrc)
     {
         uint hcrc;
 

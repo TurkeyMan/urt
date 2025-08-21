@@ -40,23 +40,23 @@ auto max(T, U)(auto ref inout T a, auto ref inout U b)
 
 template Align(size_t value, size_t alignment = size_t.sizeof)
 {
-    static assert(isPowerOf2(alignment), "Alignment must be a power of two: ", alignment);
+    static assert(is_power_of_2(alignment), "Alignment must be a power of two: ", alignment);
     enum Align = alignTo(value, alignment);
 }
 
-enum IsAligned(size_t value) = isAligned(value);
-enum IsPowerOf2(size_t value) = isPowerOf2(value);
-enum NextPowerOf2(size_t value) = nextPowerOf2(value);
+enum IsAligned(size_t value) = is_aligned(value);
+enum IsPowerOf2(size_t value) = is_power_of_2(value);
+enum NextPowerOf2(size_t value) = next_power_of_2(value);
 
 
-bool isPowerOf2(T)(T x)
-    if (isSomeInt!T)
+bool is_power_of_2(T)(T x)
+    if (is_some_int!T)
 {
     return (x & (x - 1)) == 0;
 }
 
-T nextPowerOf2(T)(T x)
-    if (isSomeInt!T)
+T next_power_of_2(T)(T x)
+    if (is_some_int!T)
 {
     x -= 1;
     x |= x >> 1;
@@ -71,40 +71,40 @@ T nextPowerOf2(T)(T x)
     return cast(T)(x + 1);
 }
 
-T alignDown(size_t alignment, T)(T value)
-    if (isSomeInt!T || is(T == U*, U))
+T align_down(size_t alignment, T)(T value)
+    if (is_some_int!T || is(T == U*, U))
 {
     return cast(T)(cast(size_t)value & ~(alignment - 1));
 }
 
-T alignDown(T)(T value, size_t alignment)
-    if (isSomeInt!T || is(T == U*, U))
+T align_down(T)(T value, size_t alignment)
+    if (is_some_int!T || is(T == U*, U))
 {
     return cast(T)(cast(size_t)value & ~(alignment - 1));
 }
 
-T alignUp(size_t alignment, T)(T value)
-    if (isSomeInt!T || is(T == U*, U))
+T align_up(size_t alignment, T)(T value)
+    if (is_some_int!T || is(T == U*, U))
 {
     return cast(T)((cast(size_t)value + (alignment - 1)) & ~(alignment - 1));
 }
 
-T alignUp(T)(T value, size_t alignment)
-    if (isSomeInt!T || is(T == U*, U))
+T align_up(T)(T value, size_t alignment)
+    if (is_some_int!T || is(T == U*, U))
 {
     return cast(T)((cast(size_t)value + (alignment - 1)) & ~(alignment - 1));
 }
 
-bool isAligned(size_t alignment, T)(T value)
-    if (isSomeInt!T || is(T == U*, U))
+bool is_aligned(size_t alignment, T)(T value)
+    if (is_some_int!T || is(T == U*, U))
 {
     static assert(IsPowerOf2!alignment, "Alignment must be a power of two");
     static assert(T.sizeof <= size_t.sizeof, "TODO");
     return (cast(size_t)value & (alignment - 1)) == 0;
 }
 
-bool isAligned(T)(T value, size_t alignment)
-    if (isSomeInt!T || is(T == U*, U))
+bool is_aligned(T)(T value, size_t alignment)
+    if (is_some_int!T || is(T == U*, U))
 {
     static assert(T.sizeof <= size_t.sizeof, "TODO");
     return (cast(size_t)value & (alignment - 1)) == 0;
@@ -142,7 +142,7 @@ ubyte log2(ubyte val)
 }
 
 ubyte log2(T)(T val)
-    if (isSomeInt!T && T.sizeof > 1)
+    if (is_some_int!T && T.sizeof > 1)
 {
     if (T.sizeof > 4 && val >> 32)
     {
@@ -174,7 +174,7 @@ ubyte log2(T)(T val)
 +/
 
 ubyte log2(T)(T x)
-    if (isIntegral!T)
+    if (is_integral!T)
 {
     ubyte result = 0;
     static if (T.sizeof > 4)
@@ -203,7 +203,7 @@ ubyte log2(T)(T x)
 }
 
 ubyte clz(bool nonZero = false, T)(T x)
-    if (isIntegral!T)
+    if (is_integral!T)
 {
     static if (nonZero)
         debug assert(x != 0);
@@ -272,7 +272,7 @@ ubyte clz(T : bool)(T x)
     => x ? 7 : 8;
 
 ubyte ctz(bool nonZero = false, T)(T x)
-    if (isIntegral!T)
+    if (is_integral!T)
 {
     static if (nonZero)
         debug assert(x != 0);
@@ -380,7 +380,7 @@ ubyte ctz(T : bool)(T x)
     => x ? 0 : 8;
 
 ubyte popcnt(T)(T x)
-    if (isIntegral!T)
+    if (is_integral!T)
 {
     if (__ctfe || !IS_LDC_OR_GDC)
     {
@@ -412,9 +412,9 @@ ubyte popcnt(T)(T x)
 ubyte popcnt(T : bool)(T x)
     => x ? 1 : 0;
 
-ubyte byteReverse(ubyte v)
+ubyte byte_reverse(ubyte v)
     => v;
-ushort byteReverse(ushort v)
+ushort byte_reverse(ushort v)
 {
     if (__ctfe || !IS_LDC_OR_GDC)
         return cast(ushort)((v << 8) | (v >> 8));
@@ -423,7 +423,7 @@ ushort byteReverse(ushort v)
     else
         assert(false, "Unreachable");
 }
-uint byteReverse(uint v)
+uint byte_reverse(uint v)
 {
     if (__ctfe || !IS_LDC_OR_GDC)
         return cast(uint)((v << 24) | ((v & 0xFF00) << 8) | ((v >> 8) & 0xFF00) | (v >> 24));
@@ -432,7 +432,7 @@ uint byteReverse(uint v)
     else
         assert(false, "Unreachable");
 }
-ulong byteReverse(ulong v)
+ulong byte_reverse(ulong v)
 {
     if (__ctfe || !IS_LDC_OR_GDC)
         return cast(ulong)((v << 56) | ((v & 0xFF00) << 40) | ((v & 0xFF0000) << 24) | ((v & 0xFF000000) << 8) | ((v >> 8) & 0xFF000000) | ((v >> 24) & 0xFF0000) | ((v >> 40) & 0xFF00) | (v >> 56));
@@ -441,17 +441,17 @@ ulong byteReverse(ulong v)
     else
         assert(false, "Unreachable");
 }
-pragma(inline, true) T byteReverse(T)(T val)
-    if (!isIntegral!T)
+pragma(inline, true) T byte_reverse(T)(T val)
+    if (!is_integral!T)
 {
     import urt.meta : IntForWidth;
     alias U = IntForWidth!(T.sizeof*8);
-    U r = byteReverse(*cast(U*)&val);
+    U r = byte_reverse(*cast(U*)&val);
     return *cast(T*)&r;
 }
 
-T bitReverse(T)(T x)
-    if (isSomeInt!T)
+T bit_reverse(T)(T x)
+    if (is_some_int!T)
 {
     if (__ctfe || !IS_LDC)
     {
@@ -478,7 +478,7 @@ T bitReverse(T)(T x)
             static if (T.sizeof == 1)
                 return x;
             else
-                return byteReverse(x);
+                return byte_reverse(x);
         }
     }
     else
@@ -533,39 +533,39 @@ unittest
     assert(x.swap(y) == 10);
     assert(x.swap(30) == 20);
 
-    static assert(isPowerOf2(0) == true);
-    static assert(isPowerOf2(1) == true);
-    static assert(isPowerOf2(2) == true);
-    static assert(isPowerOf2(3) == false);
-    static assert(isPowerOf2(4) == true);
-    static assert(isPowerOf2(5) == false);
-    static assert(isPowerOf2(ulong(uint.max) + 1) == true);
-    static assert(isPowerOf2(ulong.max) == false);
-    assert(isPowerOf2(0) == true);
-    assert(isPowerOf2(1) == true);
-    assert(isPowerOf2(2) == true);
-    assert(isPowerOf2(3) == false);
-    assert(isPowerOf2(4) == true);
-    assert(isPowerOf2(5) == false);
-    assert(isPowerOf2(ulong(uint.max) + 1) == true);
-    assert(isPowerOf2(ulong.max) == false);
+    static assert(is_power_of_2(0) == true);
+    static assert(is_power_of_2(1) == true);
+    static assert(is_power_of_2(2) == true);
+    static assert(is_power_of_2(3) == false);
+    static assert(is_power_of_2(4) == true);
+    static assert(is_power_of_2(5) == false);
+    static assert(is_power_of_2(ulong(uint.max) + 1) == true);
+    static assert(is_power_of_2(ulong.max) == false);
+    assert(is_power_of_2(0) == true);
+    assert(is_power_of_2(1) == true);
+    assert(is_power_of_2(2) == true);
+    assert(is_power_of_2(3) == false);
+    assert(is_power_of_2(4) == true);
+    assert(is_power_of_2(5) == false);
+    assert(is_power_of_2(ulong(uint.max) + 1) == true);
+    assert(is_power_of_2(ulong.max) == false);
 
-    static assert(nextPowerOf2(0) == 0);
-    static assert(nextPowerOf2(1) == 1);
-    static assert(nextPowerOf2(2) == 2);
-    static assert(nextPowerOf2(3) == 4);
-    static assert(nextPowerOf2(4) == 4);
-    static assert(nextPowerOf2(5) == 8);
-    static assert(nextPowerOf2(uint.max) == 0);
-    static assert(nextPowerOf2(ulong(uint.max)) == ulong(uint.max) + 1);
-    assert(nextPowerOf2(0) == 0);
-    assert(nextPowerOf2(1) == 1);
-    assert(nextPowerOf2(2) == 2);
-    assert(nextPowerOf2(3) == 4);
-    assert(nextPowerOf2(4) == 4);
-    assert(nextPowerOf2(5) == 8);
-    assert(nextPowerOf2(uint.max) == 0);
-    assert(nextPowerOf2(ulong(uint.max)) == ulong(uint.max) + 1);
+    static assert(next_power_of_2(0) == 0);
+    static assert(next_power_of_2(1) == 1);
+    static assert(next_power_of_2(2) == 2);
+    static assert(next_power_of_2(3) == 4);
+    static assert(next_power_of_2(4) == 4);
+    static assert(next_power_of_2(5) == 8);
+    static assert(next_power_of_2(uint.max) == 0);
+    static assert(next_power_of_2(ulong(uint.max)) == ulong(uint.max) + 1);
+    assert(next_power_of_2(0) == 0);
+    assert(next_power_of_2(1) == 1);
+    assert(next_power_of_2(2) == 2);
+    assert(next_power_of_2(3) == 4);
+    assert(next_power_of_2(4) == 4);
+    assert(next_power_of_2(5) == 8);
+    assert(next_power_of_2(uint.max) == 0);
+    assert(next_power_of_2(ulong(uint.max)) == ulong(uint.max) + 1);
 
     static assert(log2(ubyte(0)) == 0);
     static assert(log2(ubyte(1)) == 0);
@@ -679,50 +679,50 @@ unittest
     assert(popcnt(true) == 1);
     assert(popcnt('D') == 2); // 0x44
 
-    static assert(bitReverse(ubyte(0)) == 0);
-    static assert(bitReverse(ubyte(1)) == 128);
-    static assert(bitReverse(ubyte(2)) == 64);
-    static assert(bitReverse(ubyte(3)) == 192);
-    static assert(bitReverse(ubyte(4)) == 32);
-    static assert(bitReverse(ubyte(5)) == 160);
-    static assert(bitReverse(ubyte(6)) == 96);
-    static assert(bitReverse(ubyte(7)) == 224);
-    static assert(bitReverse(ubyte(8)) == 16);
-    static assert(bitReverse(ubyte(255)) == 255);
-    static assert(bitReverse(ushort(0b1101100010000000)) == 0b0000000100011011);
-    static assert(bitReverse(uint(0x73810000)) == 0x000081CE);
-    static assert(bitReverse(ulong(0x7381000000000000)) == 0x00000000000081CE);
-    assert(bitReverse(ubyte(0)) == 0);
-    assert(bitReverse(ubyte(1)) == 128);
-    assert(bitReverse(ubyte(2)) == 64);
-    assert(bitReverse(ubyte(3)) == 192);
-    assert(bitReverse(ubyte(4)) == 32);
-    assert(bitReverse(ubyte(5)) == 160);
-    assert(bitReverse(ubyte(6)) == 96);
-    assert(bitReverse(ubyte(7)) == 224);
-    assert(bitReverse(ubyte(8)) == 16);
-    assert(bitReverse(ubyte(255)) == 255);
-    assert(bitReverse(ushort(0b1101100010000000)) == 0b0000000100011011);
-    assert(bitReverse(uint(0x73810000)) == 0x000081CE);
-    assert(bitReverse(ulong(0x7381000000000000)) == 0x00000000000081CE);
+    static assert(bit_reverse(ubyte(0)) == 0);
+    static assert(bit_reverse(ubyte(1)) == 128);
+    static assert(bit_reverse(ubyte(2)) == 64);
+    static assert(bit_reverse(ubyte(3)) == 192);
+    static assert(bit_reverse(ubyte(4)) == 32);
+    static assert(bit_reverse(ubyte(5)) == 160);
+    static assert(bit_reverse(ubyte(6)) == 96);
+    static assert(bit_reverse(ubyte(7)) == 224);
+    static assert(bit_reverse(ubyte(8)) == 16);
+    static assert(bit_reverse(ubyte(255)) == 255);
+    static assert(bit_reverse(ushort(0b1101100010000000)) == 0b0000000100011011);
+    static assert(bit_reverse(uint(0x73810000)) == 0x000081CE);
+    static assert(bit_reverse(ulong(0x7381000000000000)) == 0x00000000000081CE);
+    assert(bit_reverse(ubyte(0)) == 0);
+    assert(bit_reverse(ubyte(1)) == 128);
+    assert(bit_reverse(ubyte(2)) == 64);
+    assert(bit_reverse(ubyte(3)) == 192);
+    assert(bit_reverse(ubyte(4)) == 32);
+    assert(bit_reverse(ubyte(5)) == 160);
+    assert(bit_reverse(ubyte(6)) == 96);
+    assert(bit_reverse(ubyte(7)) == 224);
+    assert(bit_reverse(ubyte(8)) == 16);
+    assert(bit_reverse(ubyte(255)) == 255);
+    assert(bit_reverse(ushort(0b1101100010000000)) == 0b0000000100011011);
+    assert(bit_reverse(uint(0x73810000)) == 0x000081CE);
+    assert(bit_reverse(ulong(0x7381000000000000)) == 0x00000000000081CE);
 
-    static assert(byteReverse(0x12) == 0x12);
-    static assert(byteReverse(0x1234) == 0x3412);
-    static assert(byteReverse(0x12345678) == 0x78563412);
-    static assert(byteReverse(0x123456789ABCDEF0) == 0xF0DEBC9A78563412);
-    static assert(byteReverse(true) == true);
-    static assert(byteReverse(char(0x12)) == char(0x12));
-    static assert(byteReverse(wchar(0x1234)) == wchar(0x3412));
-    static assert(byteReverse(cast(dchar)0x12345678) == cast(dchar)0x78563412);
-    assert(byteReverse(0x12) == 0x12);
-    assert(byteReverse(0x1234) == 0x3412);
-    assert(byteReverse(0x12345678) == 0x78563412);
-    assert(byteReverse(0x123456789ABCDEF0) == 0xF0DEBC9A78563412);
-    assert(byteReverse(true) == true);
-    assert(byteReverse(char(0x12)) == char(0x12));
-    assert(byteReverse(wchar(0x1234)) == wchar(0x3412));
-    assert(byteReverse(cast(dchar)0x12345678) == cast(dchar)0x78563412);
+    static assert(byte_reverse(0x12) == 0x12);
+    static assert(byte_reverse(0x1234) == 0x3412);
+    static assert(byte_reverse(0x12345678) == 0x78563412);
+    static assert(byte_reverse(0x123456789ABCDEF0) == 0xF0DEBC9A78563412);
+    static assert(byte_reverse(true) == true);
+    static assert(byte_reverse(char(0x12)) == char(0x12));
+    static assert(byte_reverse(wchar(0x1234)) == wchar(0x3412));
+    static assert(byte_reverse(cast(dchar)0x12345678) == cast(dchar)0x78563412);
+    assert(byte_reverse(0x12) == 0x12);
+    assert(byte_reverse(0x1234) == 0x3412);
+    assert(byte_reverse(0x12345678) == 0x78563412);
+    assert(byte_reverse(0x123456789ABCDEF0) == 0xF0DEBC9A78563412);
+    assert(byte_reverse(true) == true);
+    assert(byte_reverse(char(0x12)) == char(0x12));
+    assert(byte_reverse(wchar(0x1234)) == wchar(0x3412));
+    assert(byte_reverse(cast(dchar)0x12345678) == cast(dchar)0x78563412);
     float frev;
     *cast(uint*)&frev = 0x0000803F;
-    assert(byteReverse(1.0f) is frev);
+    assert(byte_reverse(1.0f) is frev);
 }

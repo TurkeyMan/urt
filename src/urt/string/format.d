@@ -291,17 +291,17 @@ struct DefFormat(T)
             // TODO: what formats are interesting for ints?
 
             bool leadingZeroes = false;
-            bool toLower = false;
+            bool to_lower = false;
             bool varLen = false;
             ptrdiff_t padding = 0;
             uint base = 10;
 
             static if (is(T == long))
             {
-                bool showSign = false;
+                bool show_sign = false;
                 if (format.length && format[0] == '+')
                 {
-                    showSign = true;
+                    show_sign = true;
                     format.popFront;
                 }
             }
@@ -315,7 +315,7 @@ struct DefFormat(T)
                 varLen = true;
                 format.popFront;
             }
-            if (format.length && format[0].isNumeric)
+            if (format.length && format[0].is_numeric)
             {
                 bool success;
                 padding = format.parse_int_fast(success);
@@ -332,7 +332,7 @@ struct DefFormat(T)
                 if (b == 'x')
                 {
                     base = 16;
-                    toLower = format[0] == 'x' && buffer.ptr;
+                    to_lower = format[0] == 'x' && buffer.ptr;
                 }
                 else if (b == 'b')
                     base = 2;
@@ -344,11 +344,11 @@ struct DefFormat(T)
             }
 
             static if (is(T == long))
-                size_t len = format_int(value, buffer, base, cast(uint)padding, leadingZeroes ? '0' : ' ', showSign);
+                size_t len = format_int(value, buffer, base, cast(uint)padding, leadingZeroes ? '0' : ' ', show_sign);
             else
                 size_t len = format_uint(value, buffer, base, cast(uint)padding, leadingZeroes ? '0' : ' ');
 
-            if (toLower && len > 0)
+            if (to_lower && len > 0)
             {
                 for (size_t i = 0; i < len; ++i)
                     if (cast(uint)(buffer.ptr[i] - 'A') < 26)
@@ -392,9 +392,9 @@ struct DefFormat(T)
                 varLen = true;
                 format.popFront;
             }
-            if (varLen && (!format.length || !format[0].isNumeric))
+            if (varLen && (!format.length || !format[0].is_numeric))
                 return -2;
-            if (format.length && format[0].isNumeric)
+            if (format.length && format[0].is_numeric)
             {
                 bool success;
                 width = format.parse_int_fast(success);
@@ -450,12 +450,12 @@ struct DefFormat(T)
                 return 0;
 
             int grp1 = 1, grp2 = 0;
-            if (format.length && format[0].isNumeric)
+            if (format.length && format[0].is_numeric)
             {
                 bool success;
                 grp1 = cast(int)format.parse_int_fast(success);
                 if (success && format.length > 0 && format[0] == ':' &&
-                               format.length > 1 && format[1].isNumeric)
+                               format.length > 1 && format[1].is_numeric)
                 {
                     format.popFront();
                     grp2 = cast(int)format.parse_int_fast(success);
@@ -634,7 +634,7 @@ struct DefFormat(T)
             static assert(false, "Not implemented for type: ", T.stringof);
     }
 
-    static if (isSomeInt!T || is(T == bool))
+    static if (is_some_int!T || is(T == bool))
     {
         ptrdiff_t toInt() const pure nothrow @nogc
         {
@@ -922,9 +922,9 @@ unittest
 template allAreStrings(Args...)
 {
     static if (Args.length == 1)
-        enum allAreStrings = is(Args[0] : const(char[])) || is(isSomeChar!(Args[0]));
+        enum allAreStrings = is(Args[0] : const(char[])) || is(is_some_char!(Args[0]));
     else
-        enum allAreStrings = (is(Args[0] : const(char[])) || is(isSomeChar!(Args[0]))) && allAreStrings!(Args[1 .. $]);
+        enum allAreStrings = (is(Args[0] : const(char[])) || is(is_some_char!(Args[0]))) && allAreStrings!(Args[1 .. $]);
 }
 
 template allConstCorrectStrings(Args...)
@@ -943,7 +943,7 @@ template constCorrectedStrings(Args...)
     {
         static if (is(Ty : const(char)[]))
             constCorrectedStrings = AliasSeq!(constCorrectedStrings, const(char[]));
-        else static if (isSomeChar!Ty)
+        else static if (is_some_char!Ty)
             constCorrectedStrings = AliasSeq!(constCorrectedStrings, const(char));
         else
             static assert(false, "Argument must be a char array or a char: ", T);

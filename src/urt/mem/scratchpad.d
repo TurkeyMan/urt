@@ -8,7 +8,7 @@ nothrow @nogc:
 enum size_t MaxScratchpadSize = 2048;
 enum size_t NumScratchBuffers = 4;
 
-static assert(MaxScratchpadSize.isPowerOf2, "Scratchpad size must be a power of 2");
+static assert(MaxScratchpadSize.is_power_of_2, "Scratchpad size must be a power of 2");
 
 
 void[] alloc_scratchpad(size_t size = MaxScratchpadSize)
@@ -19,7 +19,7 @@ void[] alloc_scratchpad(size_t size = MaxScratchpadSize)
         return null;
     }
 
-    size = max(size.nextPowerOf2, WindowSize);
+    size = max(size.next_power_of_2, WindowSize);
     size_t maskBits = size / WindowSize;
     size_t mask = (1 << maskBits) - 1;
 

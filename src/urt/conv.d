@@ -7,8 +7,8 @@ public import urt.string.format : toString;
 nothrow @nogc:
 
 
-// on error or not-a-number cases, bytesTaken will contain 0
-long parse_int(const(char)[] str, size_t* bytesTaken = null, int base = 10) pure
+// on error or not-a-number cases, bytes_taken will contain 0
+long parse_int(const(char)[] str, size_t* bytes_taken = null, int base = 10) pure
 {
     size_t i = 0;
     bool neg = false;
@@ -21,13 +21,13 @@ long parse_int(const(char)[] str, size_t* bytesTaken = null, int base = 10) pure
             i++;
     }
 
-    ulong value = str.ptr[i .. str.length].parse_uint(bytesTaken, base);
-    if (bytesTaken && *bytesTaken != 0)
-        *bytesTaken += i;
+    ulong value = str.ptr[i .. str.length].parse_uint(bytes_taken, base);
+    if (bytes_taken && *bytes_taken != 0)
+        *bytes_taken += i;
     return neg ? -cast(long)value : cast(long)value;
 }
 
-long parse_int_with_decimal(const(char)[] str, out ulong fixedPointDivisor, size_t* bytesTaken = null, int base = 10) pure
+long parse_int_with_decimal(const(char)[] str, out ulong fixed_point_divisor, size_t* bytes_taken = null, int base = 10) pure
 {
     size_t i = 0;
     bool neg = false;
@@ -40,13 +40,13 @@ long parse_int_with_decimal(const(char)[] str, out ulong fixedPointDivisor, size
             i++;
     }
 
-    ulong value = str[i .. str.length].parse_uint_with_decimal(fixedPointDivisor, bytesTaken, base);
-    if (bytesTaken && *bytesTaken != 0)
-        *bytesTaken += i;
+    ulong value = str[i .. str.length].parse_uint_with_decimal(fixed_point_divisor, bytes_taken, base);
+    if (bytes_taken && *bytes_taken != 0)
+        *bytes_taken += i;
     return neg ? -cast(long)value : cast(long)value;
 }
 
-ulong parse_uint(const(char)[] str, size_t* bytesTaken = null, int base = 10) pure
+ulong parse_uint(const(char)[] str, size_t* bytes_taken = null, int base = 10) pure
 {
     assert(base > 1 && base <= 36, "Invalid base");
 
@@ -76,12 +76,12 @@ ulong parse_uint(const(char)[] str, size_t* bytesTaken = null, int base = 10) pu
         }
     }
 
-    if (bytesTaken)
-        *bytesTaken = s - str.ptr;
+    if (bytes_taken)
+        *bytes_taken = s - str.ptr;
     return value;
 }
 
-ulong parse_uint_with_decimal(const(char)[] str, out ulong fixedPointDivisor, size_t* bytesTaken = null, int base = 10) pure
+ulong parse_uint_with_decimal(const(char)[] str, out ulong fixed_point_divisor, size_t* bytes_taken = null, int base = 10) pure
 {
     assert(base > 1 && base <= 36, "Invalid base");
 
@@ -126,19 +126,19 @@ parse_decimal:
     }
 
 done:
-    fixedPointDivisor = divisor;
-    if (bytesTaken)
-        *bytesTaken = s - str.ptr;
+    fixed_point_divisor = divisor;
+    if (bytes_taken)
+        *bytes_taken = s - str.ptr;
     return value;
 }
 
-ulong parse_uint_with_base(const(char)[] str, size_t* bytesTaken = null) pure
+ulong parse_uint_with_base(const(char)[] str, size_t* bytes_taken = null) pure
 {
     const(char)* p = str.ptr;
     int base = parse_base_prefix(str);
-    ulong i = parse_uint(str, bytesTaken, base);
-    if (bytesTaken && *bytesTaken != 0)
-        *bytesTaken += str.ptr - p;
+    ulong i = parse_uint(str, bytes_taken, base);
+    if (bytes_taken && *bytes_taken != 0)
+        *bytes_taken += str.ptr - p;
     return i;
 }
 
@@ -222,15 +222,15 @@ unittest
 }
 
 
-// on error or not-a-number, result will be nan and bytesTaken will contain 0
-double parse_float(const(char)[] str, size_t* bytesTaken = null, int base = 10) pure
+// on error or not-a-number, result will be nan and bytes_taken will contain 0
+double parse_float(const(char)[] str, size_t* bytes_taken = null, int base = 10) pure
 {
     // TODO: E-notation...
     size_t taken = void;
     ulong div = void;
     long value = str.parse_int_with_decimal(div, &taken, base);
-    if (bytesTaken)
-        *bytesTaken = taken;
+    if (bytes_taken)
+        *bytes_taken = taken;
     if (taken == 0)
         return double.nan;
     return cast(double)value / div;
@@ -253,18 +253,18 @@ unittest
 }
 
 
-ptrdiff_t format_int(long value, char[] buffer, uint base = 10, uint width = 0, char fill = ' ', bool showSign = false) pure
+ptrdiff_t format_int(long value, char[] buffer, uint base = 10, uint width = 0, char fill = ' ', bool show_sign = false) pure
 {
     const bool neg = value < 0;
-    showSign |= neg;
+    show_sign |= neg;
 
-    if (buffer.ptr && buffer.length < showSign)
+    if (buffer.ptr && buffer.length < show_sign)
         return -1;
 
     ulong i = neg ? -value : value;
 
-    ptrdiff_t r = format_uint(i, buffer.ptr ? buffer.ptr[(width == 0 ? showSign : 0) .. buffer.length] : null, base, width, fill);
-    if (r < 0 || !showSign)
+    ptrdiff_t r = format_uint(i, buffer.ptr ? buffer.ptr[(width == 0 ? show_sign : 0) .. buffer.length] : null, base, width, fill);
+    if (r < 0 || !show_sign)
         return r;
 
     if (buffer.ptr)
@@ -286,10 +286,10 @@ ptrdiff_t format_int(long value, char[] buffer, uint base = 10, uint width = 0, 
         if (buffer.ptr[0] == fill)
         {
             // we don't need to shift it left...
-            size_t sgnOffset = 0;
-            while (buffer.ptr[sgnOffset + 1] == fill)
-                ++sgnOffset;
-            buffer.ptr[sgnOffset] = sgn;
+            size_t sgn_offset = 0;
+            while (buffer.ptr[sgn_offset + 1] == fill)
+                ++sgn_offset;
+            buffer.ptr[sgn_offset] = sgn;
             return r;
         }
 
@@ -316,13 +316,13 @@ ptrdiff_t format_uint(ulong value, char[] buffer, uint base = 10, uint width = 0
     assert(base >= 2 && base <= 36, "Invalid base");
 
     ulong i = value;
-    uint numLen = 0;
+    uint num_len = 0;
     char[64] t = void;
     if (i == 0)
     {
         if (buffer.length > 0)
             t.ptr[0] = '0';
-        numLen = 1;
+        num_len = 1;
     }
     else
     {
@@ -334,14 +334,14 @@ ptrdiff_t format_uint(ulong value, char[] buffer, uint base = 10, uint width = 0
             if (buffer.ptr)
             {
                 int d = cast(int)(i % base);
-                t.ptr[numLen] = cast(char)((d < 10 ? '0' : 'A' - 10) + d);
+                t.ptr[num_len] = cast(char)((d < 10 ? '0' : 'A' - 10) + d);
             }
-            ++numLen;
+            ++num_len;
         }
     }
 
-    uint len = max(numLen, width);
-    uint padding = width > numLen ? width - numLen : 0;
+    uint len = max(num_len, width);
+    uint padding = width > num_len ? width - num_len : 0;
 
     if (buffer.ptr)
     {
@@ -351,7 +351,7 @@ ptrdiff_t format_uint(ulong value, char[] buffer, uint base = 10, uint width = 0
         size_t offset = 0;
         while (padding--)
             buffer.ptr[offset++] = fill;
-        for (uint j = numLen; j > 0; )
+        for (uint j = num_len; j > 0; )
             buffer.ptr[offset++] = t[--j];
     }
     return len;
@@ -442,12 +442,12 @@ template to(T)
             return r;
         }
     }
-    else static if (isSomeInt!T) // call-through for other int types; reduce instantiation bloat
+    else static if (is_some_int!T) // call-through for other int types; reduce instantiation bloat
     {
         T to(const(char)[] str)
             => cast(T)to!long(str);
     }
-    else static if (isSomeFloat!T) // call-through for other float types; reduce instantiation bloat
+    else static if (is_some_float!T) // call-through for other float types; reduce instantiation bloat
     {
         T to(const(char)[] str)
             => cast(T)to!double(str);
@@ -481,15 +481,15 @@ private:
 
 uint get_digit(char c) pure
 {
-    uint zeroBase = c - '0';
-    if (zeroBase < 10)
-        return zeroBase;
-    uint ABase = c - 'A';
-    if (ABase < 26)
-        return ABase + 10;
-    uint aBase = c - 'a';
-    if (aBase < 26)
-        return aBase + 10;
+    uint zero_base = c - '0';
+    if (zero_base < 10)
+        return zero_base;
+    uint A_base = c - 'A';
+    if (A_base < 26)
+        return A_base + 10;
+    uint a_base = c - 'a';
+    if (a_base < 26)
+        return a_base + 10;
     return -1;
 }
 
@@ -518,7 +518,7 @@ size_t format_struct(T)(ref T value, char[] buffer) nothrow @nogc
 
     alias args = value.tupleof;
 //    alias args = AliasSeq!(value.tupleof);
-//    alias args = InterleaveSeparator!(", ", value.tupleof);
+//    alias args = INTERLEAVE_SEPARATOR!(", ", value.tupleof);
 //    pragma(msg, args);
     return concat(buffer, args).length;
 }

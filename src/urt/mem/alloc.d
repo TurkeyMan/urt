@@ -13,13 +13,13 @@ void[] alloc(size_t size) nothrow @nogc
 
 void[] alloc_aligned(size_t size, size_t alignment) nothrow @nogc
 {
-    import urt.util : isPowerOf2, max;
+    import urt.util : is_power_of_2, max;
     alignment = max(alignment, (void*).sizeof);
-    assert(isPowerOf2(alignment), "Alignment must be a power of two!");
+    assert(is_power_of_2(alignment), "Alignment must be a power of two!");
 
     version (Windows)
     {
-        import urt.util : alignDown;
+        import urt.util : align_down;
 
         // This is how Visual Studio's _aligned_malloc works...
         // see C:\Program Files (x86)\Windows Kits\10\Source\10.0.15063.0\ucrt\heap\align.cpp
@@ -34,7 +34,7 @@ void[] alloc_aligned(size_t size, size_t alignment) nothrow @nogc
             return null;
 
         size_t ptr = cast(size_t)mem;
-        size_t allocptr = alignDown(ptr + header_size, alignment);
+        size_t allocptr = align_down(ptr + header_size, alignment);
         (cast(void**)allocptr)[-1] = mem;
 
         return (cast(void*)allocptr)[0 .. size];
@@ -62,10 +62,10 @@ void[] realloc(void[] mem, size_t newSize) nothrow @nogc
 
 void[] realloc_aligned(void[] mem, size_t newSize, size_t alignment) nothrow @nogc
 {
-    import urt.util : isPowerOf2, min, max;
+    import urt.util : is_power_of_2, min, max;
 
     alignment = max(alignment, (void*).sizeof);
-    assert(isPowerOf2(alignment), "Alignment must be a power of two!");
+    assert(is_power_of_2(alignment), "Alignment must be a power of two!");
 
     void[] newAlloc = newSize > 0 ? alloc_aligned(newSize, alignment) : null;
     if (newAlloc !is null && mem !is null)

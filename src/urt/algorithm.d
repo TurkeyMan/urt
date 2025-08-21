@@ -1,6 +1,6 @@
 module urt.algorithm;
 
-import urt.traits : lvalueOf;
+import urt.traits : lvalue_of;
 import urt.util : swap;
 
 version = SmallSize;
@@ -10,18 +10,18 @@ nothrow @nogc:
 
 auto compare(T, U)(auto ref T a, auto ref U b)
 {
-    static if (__traits(compiles, lvalueOf!T.opCmp(lvalueOf!U)))
+    static if (__traits(compiles, lvalue_of!T.opCmp(lvalue_of!U)))
         return a.opCmp(b);
-    else static if (__traits(compiles, lvalueOf!U.opCmp(lvalueOf!T)))
+    else static if (__traits(compiles, lvalue_of!U.opCmp(lvalue_of!T)))
         return -b.opCmp(a);
     else static if (is(T : A[], A))
     {
-        import urt.traits : isPrimitive;
+        import urt.traits : is_primitive;
 
         auto ai = a.ptr;
         auto bi = b.ptr;
         size_t len = a.length < b.length ? a.length : b.length;
-        static if (isPrimitive!A)
+        static if (is_primitive!A)
         {
             // compare strings
             foreach (i; 0 .. len)
@@ -48,7 +48,7 @@ auto compare(T, U)(auto ref T a, auto ref U b)
         return a < b ? -1 : (a > b ? 1 : 0);
 }
 
-size_t binary_search(alias pred = void, T, Cmp...)(T[] arr, auto ref Cmp cmpArgs)
+size_t binary_search(alias pred = void, T, Cmp...)(T[] arr, auto ref Cmp cmp_args)
 {
     T* p = arr.ptr;
     size_t low = 0;
@@ -59,7 +59,7 @@ size_t binary_search(alias pred = void, T, Cmp...)(T[] arr, auto ref Cmp cmpArgs
         static if (is(pred == void))
         {
             // should we chase the first in a sequence of same values?
-            if (p[mid] < cmpArgs[0])
+            if (p[mid] < cmp_args[0])
                 low = mid + 1;
             else
                 high = mid;
@@ -67,7 +67,7 @@ size_t binary_search(alias pred = void, T, Cmp...)(T[] arr, auto ref Cmp cmpArgs
         else
         {
             // should we chase the first in a sequence of same values?
-            int cmp = pred(p[mid], cmpArgs);
+            int cmp = pred(p[mid], cmp_args);
             if (cmp < 0)
                 low = mid + 1;
             else
@@ -76,12 +76,12 @@ size_t binary_search(alias pred = void, T, Cmp...)(T[] arr, auto ref Cmp cmpArgs
     }
     static if (is(pred == void))
     {
-        if (p[low] == cmpArgs[0])
+        if (p[low] == cmp_args[0])
             return low;
     }
     else
     {
-        if (pred(p[low], cmpArgs) == 0)
+        if (pred(p[low], cmp_args) == 0)
             return low;
     }
     return arr.length;
@@ -93,7 +93,7 @@ void qsort(alias pred = void, T)(T[] arr)
     version (SmallSize)
     {
         static if (is(pred == void))
-            static if (__traits(compiles, lvalueOf!T.opCmp(lvalueOf!T)))
+            static if (__traits(compiles, lvalue_of!T.opCmp(lvalue_of!T)))
                 static int compare(const void* a, const void* b) nothrow @nogc
                     => (*cast(const T*)a).opCmp(*cast(const T*)b);
             else
@@ -181,34 +181,34 @@ version (SmallSize)
     // just one generic implementation to minimise the code...
     // kinda slow though... look at all those multiplies!
     // maybe there's some way to make this faster :/
-    void qsort(void[] arr, size_t elementSize, int function(const void* a, const void* b) nothrow @nogc compare, void function(void* a, void* b) nothrow @nogc swap)
+    void qsort(void[] arr, size_t element_size, int function(const void* a, const void* b) nothrow @nogc compare, void function(void* a, void* b) nothrow @nogc swap)
     {
         void* p = arr.ptr;
-        size_t length = arr.length / elementSize;
+        size_t length = arr.length / element_size;
         if (length > 1)
         {
             size_t pivotIndex = length / 2;
-            void* pivot = p + pivotIndex*elementSize;
+            void* pivot = p + pivotIndex*element_size;
 
             size_t i = 0;
             size_t j = length - 1;
 
             while (i <= j)
             {
-                while (compare(p + i*elementSize, pivot) < 0) i++;
-                while (compare(p + j*elementSize, pivot) > 0) j--;
+                while (compare(p + i*element_size, pivot) < 0) i++;
+                while (compare(p + j*element_size, pivot) > 0) j--;
                 if (i <= j)
                 {
-                    swap(p + i*elementSize, p + j*elementSize);
+                    swap(p + i*element_size, p + j*element_size);
                     i++;
                     j--;
                 }
             }
 
             if (j > 0)
-                qsort(p[0 .. (j + 1)*elementSize], elementSize, compare, swap);
+                qsort(p[0 .. (j + 1)*element_size], element_size, compare, swap);
             if (i < length)
-                qsort(p[i*elementSize .. length*elementSize], elementSize, compare, swap);
+                qsort(p[i*element_size .. length*element_size], element_size, compare, swap);
         }
     }
 }

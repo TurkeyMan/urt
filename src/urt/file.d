@@ -195,7 +195,7 @@ Result get_path(ref const File file, ref char[] buffer)
         if (result == 0 || result > dwPathLen)
             return getlasterror_result();
 
-        size_t pathLen = tmp[0..result].uniConvert(buffer);
+        size_t pathLen = tmp[0..result].uni_convert(buffer);
         if (!pathLen)
             return InternalResult.buffer_too_small;
         if (buffer.length >= 4 && buffer[0..4] == `\\?\`)
@@ -774,7 +774,7 @@ Result get_temp_filename(ref char[] buffer, const(char)[] dstDir, const(char)[] 
         if (!GetTempFileNameW(dstDir.twstringz, prefix.twstringz, 0, tmp.ptr))
             return getlasterror_result();
         size_t resLen = wcslen(tmp.ptr);
-        resLen = tmp[((dstDir.length == 0 && tmp[0] == '\\') ? 1 : 0)..resLen].uniConvert(buffer);
+        resLen = tmp[((dstDir.length == 0 && tmp[0] == '\\') ? 1 : 0)..resLen].uni_convert(buffer);
         if (resLen == 0)
         {
             DeleteFileW(tmp.ptr);

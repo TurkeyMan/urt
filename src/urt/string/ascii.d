@@ -2,14 +2,14 @@ module urt.string.ascii;
 
 
 
-char[] toLower(const(char)[] str) pure nothrow
+char[] to_lower(const(char)[] str) pure nothrow
 {
-    return toLower(str, new char[str.length]);
+    return to_lower(str, new char[str.length]);
 }
 
-char[] toUpper(const(char)[] str) pure nothrow
+char[] to_upper(const(char)[] str) pure nothrow
 {
-    return toUpper(str, new char[str.length]);
+    return to_upper(str, new char[str.length]);
 }
 
 
@@ -17,7 +17,7 @@ nothrow @nogc:
 
 // some character category flags...
 // 1 = alpha, 2 = numeric, 4 = white, 8 = newline, 10 = control, 20 = ???, 40 = url, 80 = hex
-__gshared immutable ubyte[128] charDetails = [
+private __gshared immutable ubyte[128] char_details = [
     0x10, 0x10, 0x10, 0x10, 0x10, 0x10, 0x10, 0x10, 0x10, 0x14, 0x18, 0x10, 0x10, 0x18, 0x10, 0x10,
     0x10, 0x10, 0x10, 0x10, 0x10, 0x10, 0x10, 0x10, 0x10, 0x10, 0x10, 0x10, 0x10, 0x10, 0x10, 0x10,
     0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x40, 0x40, 0x00,
@@ -28,20 +28,20 @@ __gshared immutable ubyte[128] charDetails = [
     0x41, 0x41, 0x41, 0x41, 0x41, 0x41, 0x41, 0x41, 0x41, 0x41, 0x41, 0x00, 0x00, 0x00, 0x40, 0x10
 ];
 
-__gshared immutable char[16] hexDigits = "0123456789ABCDEF";
+__gshared immutable char[16] hex_digits = "0123456789ABCDEF";
 
 
-bool isSpace(char c) pure           => c < 128 && (charDetails[c] & 4);
-bool isNewline(char c) pure         => c < 128 && (charDetails[c] & 8);
-bool isWhitespace(char c) pure      => c < 128 && (charDetails[c] & 0xC);
-bool isAlpha(char c) pure           => c < 128 && (charDetails[c] & 1);
-bool isNumeric(char c) pure         => cast(uint)(c - '0') <= 9;
-bool isAlphaNumeric(char c) pure    => c < 128 && (charDetails[c] & 3);
-bool isHex(char c) pure             => c < 128 && (charDetails[c] & 0x80);
-bool isControlChar(char c) pure     => c < 128 && (charDetails[c] & 0x10);
-bool isURL(char c) pure             => c < 128 && (charDetails[c] & 0x40);
+bool is_space(char c) pure          => c < 128 && (char_details[c] & 4);
+bool is_newline(char c) pure        => c < 128 && (char_details[c] & 8);
+bool is_whitespace(char c) pure     => c < 128 && (char_details[c] & 0xC);
+bool is_alpha(char c) pure          => c < 128 && (char_details[c] & 1);
+bool is_numeric(char c) pure        => cast(uint)(c - '0') <= 9;
+bool is_alpha_numeric(char c) pure  => c < 128 && (char_details[c] & 3);
+bool is_hex(char c) pure            => c < 128 && (char_details[c] & 0x80);
+bool is_control_char(char c) pure   => c < 128 && (char_details[c] & 0x10);
+bool is_url(char c) pure            => c < 128 && (char_details[c] & 0x40);
 
-char toLower(char c) pure
+char to_lower(char c) pure
 {
     // this is the typical way; which is faster on a weak arch?
 //    if (c >= 'A' && c <= 'Z')
@@ -53,7 +53,7 @@ char toLower(char c) pure
     return c;
 }
 
-char toUpper(char c) pure
+char to_upper(char c) pure
 {
     // this is the typical way; which is faster on a weak arch?
 //    if (c >= 'a' && c <= 'z')
@@ -65,26 +65,26 @@ char toUpper(char c) pure
     return c;
 }
 
-char[] toLower(const(char)[] str, char[] buffer) pure
+char[] to_lower(const(char)[] str, char[] buffer) pure
 {
     foreach (i; 0 .. str.length)
-        buffer[i] = toLower(str[i]);
+        buffer[i] = to_lower(str[i]);
     return buffer;
 }
 
-char[] toUpper(const(char)[] str, char[] buffer) pure
+char[] to_upper(const(char)[] str, char[] buffer) pure
 {
     foreach (i; 0 .. str.length)
-        buffer[i] = toUpper(str[i]);
+        buffer[i] = to_upper(str[i]);
     return buffer;
 }
 
-char[] toLower(char[] str) pure
+char[] to_lower(char[] str) pure
 {
-    return toLower(str, str);
+    return to_lower(str, str);
 }
 
-char[] toUpper(char[] str) pure
+char[] to_upper(char[] str) pure
 {
-    return toUpper(str, str);
+    return to_upper(str, str);
 }

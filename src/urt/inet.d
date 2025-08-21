@@ -284,7 +284,7 @@ nothrow @nogc:
             if (buffer.length < offset)
                 return -1;
             foreach (i, c; tmp[0 .. offset])
-                buffer[i] = c.toLower;
+                buffer[i] = c.to_lower;
         }
         return offset;
     }
