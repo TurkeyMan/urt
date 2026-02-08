@@ -7,7 +7,7 @@ import urt.traits;
 nothrow @nogc:
 
 
-alias VarQuantity = Quantity!(double);
+alias VarQuantity = Quantity!double;
 alias Scalar = Quantity!(double, ScaledUnit());
 alias Metres = Quantity!(double, ScaledUnit(Metre));
 alias Seconds = Quantity!(double, ScaledUnit(Second));

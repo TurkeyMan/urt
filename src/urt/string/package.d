@@ -265,20 +265,26 @@ inout(char)[] takeLine(ref inout(char)[] s) pure
     return t;
 }
 
-inout(char)[] split(char Separator, bool HandleQuotes = true)(ref inout(char)[] s) pure
+inout(char)[] split(char[] separators, bool handle_quotes = true, bool do_trim = true)(ref inout(char)[] s, char* separator = null) pure
 {
-    static if (HandleQuotes)
+    static if (handle_quotes)
         int inQuotes = 0;
     else
         enum inQuotes = false;
 
     size_t i = 0;
-    for (; i < s.length; ++i)
+    loop: for (; i < s.length; ++i)
     {
-        if (s[i] == Separator && !inQuotes)
-            break;
-
-        static if (HandleQuotes)
+        static foreach (sep; separators)
+        {
+            if (s[i] == sep && !inQuotes)
+            {
+                if (separator)
+                    *separator = s[i];
+                break loop;
+            }
+        }
+        static if (handle_quotes)
         {
             if (s[i] == '"' && !(inQuotes & 0x6))
                 inQuotes = 1 - inQuotes;
@@ -288,38 +294,24 @@ inout(char)[] split(char Separator, bool HandleQuotes = true)(ref inout(char)[] 
                 inQuotes = 4 - inQuotes;
         }
     }
-    inout(char)[] t = s[0 .. i].trimBack;
-    s = i < s.length ? s[i+1 .. $].trimFront : null;
+    static if (do_trim)
+    {
+        inout(char)[] t = s[0 .. i].trimBack;
+        s = i < s.length ? s[i+1 .. $].trimFront : null;
+    }
+    else
+    {
+        inout(char)[] t = s[0 .. i];
+        s = i < s.length ? s[i+1 .. $] : null;
+    }
     return t;
 }
 
-inout(char)[] split(Separator...)(ref inout(char)[] s, out char sep) pure
-{
-    sep = '\0';
-    int inQuotes = 0;
-    size_t i = 0;
-    loop: for (; i < s.length; ++i)
-    {
-        static foreach (S; Separator)
-        {
-            static assert(is(typeof(S) == char), "Only single character separators supported");
-            if (s[i] == S && !inQuotes)
-            {
-                sep = s[i];
-                break loop;
-            }
-        }
-        if (s[i] == '"' && !(inQuotes & 0x6))
-            inQuotes = 1 - inQuotes;
-        else if (s[i] == '\'' && !(inQuotes & 0x5))
-            inQuotes = 2 - inQuotes;
-        else if (s[i] == '`' && !(inQuotes & 0x3))
-            inQuotes = 4 - inQuotes;
-    }
-    inout(char)[] t = s[0 .. i].trimBack;
-    s = i < s.length ? s[i+1 .. $].trimFront : null;
-    return t;
-}
+alias split(char separator, bool handle_quotes = true, bool do_trim = true) = split!([separator], handle_quotes, do_trim);
+
+// TODO: deprecate this one...
+inout(char)[] split(separators...)(ref inout(char)[] s, out char sep) pure
+    => split!([separators], true, true)(s, &sep);
 
 char[] unQuote(const(char)[] s, char[] buffer) pure
 {

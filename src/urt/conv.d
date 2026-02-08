@@ -1,6 +1,7 @@
 module urt.conv;
 
 import urt.meta;
+import urt.si.quantity;
 import urt.string;
 public import urt.string.format : toString;
 
@@ -107,10 +108,11 @@ ulong parse_uint_with_exponent(const(char)[] str, out int exponent, size_t* byte
     int exp = 0;
     uint digits = 0;
     uint zero_seq = 0;
+    char c = void;
 
     for (; s < e; ++s)
     {
-        char c = *s;
+        c = *s;
 
         if (c == '.')
         {
@@ -151,7 +153,7 @@ ulong parse_uint_with_exponent(const(char)[] str, out int exponent, size_t* byte
 parse_decimal:
     for (; s < e; ++s)
     {
-        char c = *s;
+        c = *s;
 
         if (c == '0')
         {
@@ -179,32 +181,32 @@ parse_decimal:
 
 check_exp:
     // check for exponent part
-    if (s < e && (*s == 'e' || *s == 'E'))
+    if (s + 1 < e && ((*s | 0x20) == 'e'))
     {
-        ++s;
-        bool exp_neg = false;
-        if (s < e)
+        c = s[1];
+        bool exp_neg = c == '-';
+        if (exp_neg || c == '+')
         {
-            char c = *s;
-            exp_neg = c == '-';
-            if (exp_neg || c == '+')
-                ++s;
+            if (s + 2 >= e || !s[2].is_numeric)
+                goto done;
+            s += 2;
+        }
+        else
+        {
+            if (!c.is_numeric)
+                goto done;
+            ++s;
         }
 
         int exp_value = 0;
-        const(char)* t = s;
-        for (; t < e; ++t)
+        for (; s < e; ++s)
         {
-            uint digit = *t - '0';
+            uint digit = *s - '0';
             if (digit > 9)
                 break;
             exp_value = exp_value * 10 + digit;
         }
-        if (t > s)
-        {
-            exp += exp_neg ? -exp_value : exp_value;
-            s = t;
-        }
+        exp += exp_neg ? -exp_value : exp_value;
     }
 
 done:
@@ -250,8 +252,12 @@ unittest
     assert("00100.00230".parse_uint_with_exponent(e, &taken, 10) == 1000023 && e == -4 && taken == 11);
     assert("0.0".parse_uint_with_exponent(e, &taken, 10) == 0 && e == 0 && taken == 3);
     assert(".01".parse_uint_with_exponent(e, &taken, 10) == 0 && e == 0 && taken == 0);
-    assert("10e+2".parse_uint_with_exponent(e, &taken, 10) == 1 && e == 3 && taken == 5);
+    assert("10e2".parse_uint_with_exponent(e, &taken, 10) == 1 && e == 3 && taken == 4);
     assert("0.01E+2".parse_uint_with_exponent(e, &taken, 10) == 1 && e == 0 && taken == 7);
+    assert("0.01E".parse_uint_with_exponent(e, &taken, 10) == 1 && e == -2 && taken == 4);
+    assert("0.01Ex".parse_uint_with_exponent(e, &taken, 10) == 1 && e == -2 && taken == 4);
+    assert("0.01E-".parse_uint_with_exponent(e, &taken, 10) == 1 && e == -2 && taken == 4);
+    assert("0.01E-x".parse_uint_with_exponent(e, &taken, 10) == 1 && e == -2 && taken == 4);
 }
 
 int parse_int_fast(ref const(char)[] text, out bool success) pure
@@ -352,6 +358,50 @@ unittest
     assert(fcmp(parse_float("-123.456e10"), -1.23456e+12));
     assert(fcmp(parse_float("1101.11", &taken, 2), 13.75) && taken == 7);
     assert(parse_float("xyz", &taken) is double.nan && taken == 0);
+}
+
+VarQuantity parse_quantity(const(char)[] text, size_t* bytes_taken = null) nothrow
+{
+    import urt.si.unit;
+
+    int e;
+    uint base;
+    size_t taken;
+    long raw_value = text.parse_int_with_exponent_and_base(e, base, &taken);
+    if (taken == 0)
+    {
+        if (bytes_taken)
+            *bytes_taken = 0;
+        return VarQuantity(double.nan);
+    }
+
+    // we parsed a number!
+    auto r = VarQuantity(e == 0 ? raw_value : raw_value * double(base)^^e);
+
+    if (taken < text.length)
+    {
+        // try and parse a unit...
+        ScaledUnit su;
+        float pre_scale;
+        ptrdiff_t unit_taken = su.parse_unit(text[taken .. $], pre_scale, false);
+        if (unit_taken > 0)
+        {
+            taken += unit_taken;
+            r = VarQuantity(r.value * pre_scale, su);
+        }
+    }
+    if (bytes_taken)
+        *bytes_taken = taken;
+    return r;
+}
+
+unittest
+{
+    import urt.si.unit;
+
+    size_t taken;
+    assert("10V".parse_quantity(&taken) == Volts(10) && taken == 3);
+    assert("10.2e+2Wh".parse_quantity(&taken) == WattHours(1020) && taken == 9);
 }
 
 
@@ -676,7 +726,7 @@ uint get_digit(char c) pure
     if (zero_base < 10)
         return zero_base;
     uint a_base = (c | 0x20) - 'a';
-    return 10 + a_base;
+    return 10 + (a_base & 0xFF);
 }
 
 uint parse_base_prefix(ref const(char)* str, const(char)* end) pure
@@ -703,7 +753,7 @@ uint parse_sign(ref const(char)* str, const(char)* end) pure
     if (neg > 2 || neg == 1)
         return 0;
     ++str;
-    return neg;
+    return neg; // neg is 0 (+) or 2 (-)
 }
 
 

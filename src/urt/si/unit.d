@@ -32,7 +32,7 @@ nothrow @nogc:
 //
 
 
-enum ScaledUnit unit(const(char)[] desc) = () { ScaledUnit r; float f; ptrdiff_t e = r.parseUnit(desc, f); assert(e > 0, "Invalid unit"); assert(f == 1, "Unit requires pre-scale"); return r; }();
+enum ScaledUnit unit(const(char)[] desc) = () { ScaledUnit r; float f; ptrdiff_t e = r.parse_unit(desc, f); assert(e > 0, "Invalid unit"); assert(f == 1, "Unit requires pre-scale"); return r; }();
 
 
 // base units
@@ -267,7 +267,7 @@ nothrow:
         char sep;
         while (const(char)[] unit = s.split!('/', '*')(sep))
         {
-            int p = unit.takePower();
+            int p = unit.take_power();
             if (p == 0)
                 return -1; // invalid power
 
@@ -565,11 +565,12 @@ nothrow:
     bool opEquals(Unit rh) const pure
         => (pack & 0xFF000000) ? false : unit == rh;
 
-    ptrdiff_t parseUnit(const(char)[] s, out float preScale) pure
+    alias parseUnit = parse_unit; // TODO: DELETE ME!!!
+    ptrdiff_t parse_unit(const(char)[] s, out float pre_scale, bool allow_unit_scale = true) pure
     {
         import urt.conv : parse_uint_with_exponent;
 
-        preScale = 1;
+        pre_scale = 1;
 
         if (s.length == 0)
         {
@@ -582,18 +583,20 @@ nothrow:
         {
             if (s.length == 1)
                 return -1;
-            preScale = -1;
+            pre_scale = -1;
             s = s[1 .. $];
         }
 
         ScaledUnit r;
         bool invert;
         char sep;
-        while (const(char)[] term = s.split!('/', '*')(sep))
+        while (const(char)[] term = s.split!(['/', '*'], false, false)(&sep))
         {
-            int p = term.takePower();
+            int p = term.take_power();
             if (p == 0)
                 return -1; // invalid exponent
+            if (term.length == 0)
+                return -1;
 
             size_t offset = 0;
 
@@ -601,8 +604,10 @@ nothrow:
             int e = 0;
             if (term[0].is_numeric)
             {
+                if (!allow_unit_scale)
+                    return -1; // no numeric scale factor allowed
                 ulong sf = term.parse_uint_with_exponent(e, &offset);
-                preScale *= sf;
+                pre_scale *= sf;
             }
 
             if (offset == term.length)
@@ -610,7 +615,7 @@ nothrow:
             else if (const ScaledUnit* su = term[offset .. $] in noScaleUnitMap)
             {
                 r *= (*su) ^^ (invert ? -p : p);
-                preScale *= 10.0^^e;
+                pre_scale *= 10.0^^e;
             }
             else
             {
@@ -670,7 +675,7 @@ nothrow:
                 else if (const ScaledUnit* su = term in noScaleUnitMapSI)
                 {
                     r *= (*su) ^^ (invert ? -p : p);
-                    preScale *= 10.0^^e;
+                    pre_scale *= 10.0^^e;
                 }
                 else
                     return -1; // string was not taken?
@@ -800,7 +805,7 @@ nothrow:
     ptrdiff_t fromString(const(char)[] s) pure
     {
         float scale;
-        ptrdiff_t r = parseUnit(s, scale);
+        ptrdiff_t r = parse_unit(s, scale);
         if (scale != 1)
             return -1;
         return r;
@@ -1066,7 +1071,7 @@ immutable ScaledUnit[string] noScaleUnitMapSI = [
     "varh"  : WattHour,
 ];
 
-int takePower(ref const(char)[] s) pure
+int take_power(ref const(char)[] s) pure
 {
     size_t e = s.findFirst('^');
     if (e < s.length)
