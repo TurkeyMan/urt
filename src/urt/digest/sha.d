@@ -88,7 +88,7 @@ ubyte[Context.DigestLen] sha_finalise(Context)(ref Context ctx)
 
     // Pad whatever data is left in the buffer.
     ctx.data[i++] = 0x80;
-    if (ctx.datalen > 56)
+    if (ctx.datalen >= 56)
     {
         ctx.data[i .. 64] = 0x00;
         Context.transform(ctx, ctx.data);

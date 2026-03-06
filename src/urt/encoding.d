@@ -8,17 +8,23 @@ enum HexDecode(string str) =    () { ubyte[hex_decode_length(str.length)] r;    
 enum URLDecode(string str) =    () {  char[url_decode_length(str)] r;           size_t len = url_decode(str, r[]);    assert(len == r.sizeof, "Not a URL encoded string: " ~ str); return r; }();
 
 
-size_t base64_encode_length(size_t source_length) pure
-    => (source_length + 2) / 3 * 4;
-
-size_t base64_encode_length(const void[] data) pure
-    => base64_encode_length(data.length);
-
-ptrdiff_t base64_encode(const void[] data, char[] result) pure
+size_t base64_encode_length(bool url = false)(size_t source_length) pure
 {
+    static if (url)
+        return (source_length * 4 + 2) / 3; // no padding
+    else
+        return (source_length + 2) / 3 * 4;
+}
+
+size_t base64_encode_length(bool url = false)(const void[] data) pure
+    => base64_encode_length!url(data.length);
+
+ptrdiff_t base64_encode(bool url = false)(const void[] data, char[] result) pure
+{
+    immutable(char)* table = url ? &base64url[0] : &base64[0];
     auto src = cast(const(ubyte)[])data;
     size_t len = data.length;
-    size_t out_len = base64_encode_length(len);
+    size_t out_len = base64_encode_length!url(len);
 
     if (result.length < out_len)
         return -1;
@@ -31,77 +37,111 @@ ptrdiff_t base64_encode(const void[] data, char[] result) pure
         ubyte b1 = src[i++];
         ubyte b2 = src[i++];
 
-        result[j++] = base64[b0 >> 2];
-        result[j++] = base64[((b0 & 0x03) << 4) | (b1 >> 4)];
-        result[j++] = base64[((b1 & 0x0F) << 2) | (b2 >> 6)];
-        result[j++] = base64[b2 & 0x3F];
+        result[j++] = table[b0 >> 2];
+        result[j++] = table[((b0 & 0x03) << 4) | (b1 >> 4)];
+        result[j++] = table[((b1 & 0x0F) << 2) | (b2 >> 6)];
+        result[j++] = table[b2 & 0x3F];
     }
 
     if (i < len)
     {
         ubyte b0 = src[i++];
-        result[j++] = base64[b0 >> 2];
+        result[j++] = table[b0 >> 2];
         if (i < len)
         {
             ubyte b1 = src[i];
-            result[j++] = base64[((b0 & 0x03) << 4) | (b1 >> 4)];
-            result[j++] = base64[((b1 & 0x0F) << 2)];
+            result[j++] = table[((b0 & 0x03) << 4) | (b1 >> 4)];
+            result[j++] = table[((b1 & 0x0F) << 2)];
         }
         else
         {
-            result[j++] = base64[((b0 & 0x03) << 4)];
-            result[j++] = '=';
+            result[j++] = table[((b0 & 0x03) << 4)];
+            static if (!url)
+                result[j++] = '=';
         }
-        result[j] = '=';
+        static if (!url)
+            result[j] = '=';
     }
 
     return out_len;
 }
 
-size_t base64_decode_length(size_t source_length) pure
-    => source_length / 4 * 3;
-
-size_t base64_decode_length(const char[] data) pure
-    => base64_decode_length(data.length);
-
-ptrdiff_t base64_decode(const char[] data, void[] result) pure
+size_t base64_decode_length(bool url = false)(size_t source_length) pure
 {
+    static if (url)
+    {
+        size_t remainder = source_length % 4;
+        return source_length / 4 * 3 + (remainder > 0 ? remainder - 1 : 0);
+    }
+    else
+        return source_length / 4 * 3;
+}
+
+size_t base64_decode_length(bool url = false)(const char[] data) pure
+    => base64_decode_length!url(data.length);
+
+ptrdiff_t base64_decode(bool url = false)(const char[] data, void[] result) pure
+{
+    static if (url)
+    {
+        enum uint offset = 45;
+        enum uint map_size = 78;
+        alias map = base64url_map;
+    }
+    else
+    {
+        enum uint offset = 43;
+        enum uint map_size = 80;
+        alias map = base64_map;
+    }
+
     size_t len = data.length;
     auto dest = cast(ubyte[])result;
-    size_t out_len = base64_decode_length(len);
-    if (data[len - 1] == '=')
-        out_len--;
-    if (data[len - 2] == '=')
-        out_len--;
+    size_t out_len;
+
+    static if (url)
+    {
+        size_t remainder = len % 4;
+        if (remainder == 1)
+            return -1;
+        out_len = len / 4 * 3 + (remainder > 0 ? remainder - 1 : 0);
+    }
+    else
+    {
+        out_len = len / 4 * 3;
+        if (len >= 1 && data[len - 1] == '=')
+            --out_len;
+        if (len >= 2 && data[len - 2] == '=')
+            --out_len;
+    }
 
     if (result.length < out_len)
         return -1;
 
+    static if (url)
+        size_t full_len = len / 4 * 4;
+    else
+        size_t full_len = len;
+
     size_t i = 0;
     size_t j = 0;
-    while (i < len)
+    while (i < full_len)
     {
-        if (i > len - 4)
+        if (i > full_len - 4)
             return -1;
 
         // TODO: this could be faster by using more memory, store a full 256-byte table and no comparisons...
-        uint b0 = data[i++] - 43;
-        uint b1 = data[i++] - 43;
-        uint b2 = data[i++] - 43;
-        uint b3 = data[i++] - 43;
-        if (b0 >= 80)
-            return -1;
-        if (b1 >= 80)
-            return -1;
-        if (b2 >= 80)
-            return -1;
-        if (b3 >= 80)
+        uint b0 = data[i++] - offset;
+        uint b1 = data[i++] - offset;
+        uint b2 = data[i++] - offset;
+        uint b3 = data[i++] - offset;
+        if (b0 >= map_size || b1 >= map_size || b2 >= map_size || b3 >= map_size)
             return -1;
 
-        b0 = base64_map[b0];
-        b1 = base64_map[b1];
-        b2 = base64_map[b2];
-        b3 = base64_map[b3];
+        b0 = map[b0];
+        b1 = map[b1];
+        b2 = map[b2];
+        b3 = map[b3];
 
         dest[j++] = cast(ubyte)((b0 << 2) | (b1 >> 4));
         if (b2 != 64)
@@ -110,8 +150,47 @@ ptrdiff_t base64_decode(const char[] data, void[] result) pure
             dest[j++] = cast(ubyte)((b2 << 6) | b3);
     }
 
+    static if (url)
+    {
+        if (i < len)
+        {
+            uint b0 = data[i++] - offset;
+            uint b1 = data[i++] - offset;
+            if (b0 >= map_size || b1 >= map_size)
+                return -1;
+            b0 = map[b0];
+            b1 = map[b1];
+            dest[j++] = cast(ubyte)((b0 << 2) | (b1 >> 4));
+
+            if (i < len)
+            {
+                uint b2 = data[i] - offset;
+                if (b2 >= map_size)
+                    return -1;
+                b2 = map[b2];
+                dest[j++] = cast(ubyte)((b1 << 4) | (b2 >> 2));
+            }
+        }
+    }
+
     return out_len;
 }
+
+size_t base64url_encode_length(size_t source_length) pure
+=> base64_encode_length!true(source_length);
+
+size_t base64url_encode_length(const void[] data) pure
+=> base64_encode_length!true(data);
+
+alias base64url_encode = base64_encode!true;
+
+size_t base64url_decode_length(size_t source_length) pure
+    => base64_decode_length!true(source_length);
+
+size_t base64url_decode_length(const char[] data) pure
+    => base64_decode_length!true(data);
+
+alias base64url_decode = base64_decode!true;
 
 unittest
 {
@@ -141,6 +220,75 @@ unittest
     len = base64_decode(encoded, decoded);
     assert(len == 10);
     assert(data[0..10] == decoded[0..10]);
+
+    // base64url: different alphabet (+/ → -_) and no padding
+    // [0..3] all-62, [3..6] all-63, [6..9] mixed 62/63
+    immutable ubyte[9] urldata = [0xFB, 0xEF, 0xBE, 0xFF, 0xFF, 0xFF, 0xFB, 0xFF, 0xBF];
+
+    len = base64_encode(urldata[0..3], encoded[0..4]);
+    assert(len == 4);
+    assert(encoded[0..4] == "++++");
+    len = base64url_encode(urldata[0..3], encoded[0..4]);
+    assert(len == 4);
+    assert(encoded[0..4] == "----");
+
+    len = base64_encode(urldata[3..6], encoded[0..4]);
+    assert(len == 4);
+    assert(encoded[0..4] == "////");
+    len = base64url_encode(urldata[3..6], encoded[0..4]);
+    assert(len == 4);
+    assert(encoded[0..4] == "____");
+
+    len = base64_encode(urldata[6..9], encoded[0..4]);
+    assert(len == 4);
+    assert(encoded[0..4] == "+/+/");
+    len = base64url_encode(urldata[6..9], encoded[0..4]);
+    assert(len == 4);
+    assert(encoded[0..4] == "-_-_");
+
+    // decode roundtrips
+    len = base64_decode("++++", decoded[0..3]);
+    assert(len == 3);
+    assert(decoded[0..3] == urldata[0..3]);
+    len = base64url_decode("----", decoded[0..3]);
+    assert(len == 3);
+    assert(decoded[0..3] == urldata[0..3]);
+    len = base64_decode("+/+/", decoded[0..3]);
+    assert(len == 3);
+    assert(decoded[0..3] == urldata[6..9]);
+    len = base64url_decode("-_-_", decoded[0..3]);
+    assert(len == 3);
+    assert(decoded[0..3] == urldata[6..9]);
+
+    // padding vs no-padding: 1 byte → /w== vs _w
+    len = base64_encode(urldata[3..4], encoded[0..4]);
+    assert(len == 4);
+    assert(encoded[0..4] == "/w==");
+    len = base64_decode(encoded[0..4], decoded[0..1]);
+    assert(len == 1);
+    assert(decoded[0] == 0xFF);
+
+    len = base64url_encode(urldata[3..4], encoded[0..2]);
+    assert(len == 2);
+    assert(encoded[0..2] == "_w");
+    len = base64url_decode(encoded[0..2], decoded[0..1]);
+    assert(len == 1);
+    assert(decoded[0] == 0xFF);
+
+    // padding vs no-padding: 2 bytes → ++8= vs --8
+    len = base64_encode(urldata[0..2], encoded[0..4]);
+    assert(len == 4);
+    assert(encoded[0..4] == "++8=");
+    len = base64_decode(encoded[0..4], decoded[0..2]);
+    assert(len == 2);
+    assert(decoded[0..2] == urldata[0..2]);
+
+    len = base64url_encode(urldata[0..2], encoded[0..3]);
+    assert(len == 3);
+    assert(encoded[0..3] == "--8");
+    len = base64url_decode(encoded[0..3], decoded[0..2]);
+    assert(len == 2);
+    assert(decoded[0..2] == urldata[0..2]);
 }
 
 size_t hex_encode_length(size_t sourceLength) pure
@@ -331,10 +479,19 @@ unittest
 private:
 
 __gshared immutable char[64] base64 = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-__gshared immutable ubyte[80] base64_map = [    62, 0,  0,  0,  63,
-    52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 0,  0,  0,  64,  0,  0,
-    0,  0,  1,  2,  3,  4,  5,  6,  7,  8,  9,  10, 11, 12, 13, 14,
-    15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 0,  0,  0,  0,  0,
-    0,  26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40,
+__gshared immutable ubyte[80] base64_map = [    62,  0,  0,  0, 63,
+    52, 53, 54, 55, 56, 57, 58, 59, 60, 61,  0,  0,  0, 64,  0,  0,
+     0,  0,  1,  2,  3,  4,  5,  6,  7,  8,  9, 10, 11, 12, 13, 14,
+    15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25,  0,  0,  0,  0,  0,
+     0, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40,
+    41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51
+];
+
+__gshared immutable char[64] base64url = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
+__gshared immutable ubyte[78] base64url_map = [         62,  0,  0,
+    52, 53, 54, 55, 56, 57, 58, 59, 60, 61,  0,  0,  0,  0,  0,  0,
+     0,  0,  1,  2,  3,  4,  5,  6,  7,  8,  9, 10, 11, 12, 13, 14,
+    15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25,  0,  0,  0,  0, 63,
+     0, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40,
     41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51
 ];
