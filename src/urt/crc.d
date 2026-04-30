@@ -415,7 +415,7 @@ enum crc_params[] param_table = [
 ];
 
 // helper function to reflect bits (reverse bit order)
-T reflect(T)(T value, ubyte bits)
+T reflect(T)(T value, ubyte bits) pure
 {
     T result = 0;
     foreach (i; 0..bits)
