@@ -374,6 +374,7 @@ ifeq ($(PLATFORM),bl808)
   else ifeq ($(PROCESSOR),e907)
     # BL808 M0 core -- E907 uses same peripheral drivers as BL618.
     URT_SOURCES := $(URT_SOURCES) $(shell find "$(URT_SRCDIR)/urt/driver/bl618" -type f -name '*.d')
+    URT_SOURCES := $(URT_SOURCES) $(shell find "$(URT_SRCDIR)/urt/driver/wpa" -type f -name '*.d')
     URT_SOURCES := $(URT_SOURCES) $(shell find "$(URT_SRCDIR)/urt/driver/bl808_m0" -type f -name '*.d')
   endif
 endif

@@ -1,4 +1,4 @@
-module urt.thread;
+module urt.sync.thread;
 
 import urt.mem.allocator : defaultAllocator;
 
@@ -59,7 +59,7 @@ Thread thread_spawn(ThreadEntry entry, size_t stack_size = 0)
         handle = h;
     }
     else
-        static assert(false, "thread_spawn not supported on this target");
+        assert(false, "thread_spawn not supported on this target");
 
     if (!handle)
     {
@@ -82,7 +82,9 @@ void thread_join(Thread t)
     else version (Posix)
         pthread_join(cast(pthread_t)t, null);
     else version (FreeRTOS)
-        static assert(false, "thread_join is not yet implemented on FreeRTOS");
+        assert(false, "thread_join is not yet implemented on FreeRTOS");
+    else
+        return;
 }
 
 

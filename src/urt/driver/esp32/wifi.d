@@ -27,6 +27,8 @@ else version (ESP32_C5) enum uint num_wifi = 1;
 else version (ESP32_C6) enum uint num_wifi = 1;
 else                    enum uint num_wifi = 0; // H2 (BT/802.15.4 only), P4 (needs external)
 
+enum ubyte wifi_max_ap_clients = 10;
+
 
 static if (num_wifi > 0):
 
@@ -68,24 +70,46 @@ void wifi_hw_close(uint port)
     _event_cb = null;
     _rx_cb = null;
     _raw_rx_cb = null;
-    _evt_sta_connected = false;
-    _evt_sta_disconnected = false;
-    _evt_ap_started = false;
-    _evt_ap_stopped = false;
+    _wifi_evt_head = 0;
+    _wifi_evt_tail = 0;
 }
 
 bool wifi_hw_set_mode(uint port, WifiMode mode)
 {
-    if (mode == WifiMode.monitor)
-        return false;
-
-    // Map to ESP-IDF wifi_mode_t: 0=none,1=sta,2=ap,3=apsta
-    static immutable ubyte[5] mode_map = [0, 0, 1, 2, 3];
-    return esp_wifi_set_mode(mode_map[mode]) == ESP_OK;
+    // ESP-IDF treats promiscuous as a flag orthogonal to STA/AP, so monitor
+    // here means "STA mode (radio on, channel controllable) with promiscuous
+    // enabled later via wifi_hw_set_raw_rx_callback". The driver brings the
+    // radio up in STA so esp_wifi_set_channel is accepted; without STA, the
+    // channel setter rejects the call with WIFI_NOT_INIT_OR_NOT_STARTED.
+    int hw_mode = mode == WifiMode.monitor
+        ? 1   // STA -- minimum mode that lets us set channel + enable promisc
+        : (mode == WifiMode.none   ? 0
+        :  mode == WifiMode.sta    ? 1
+        :  mode == WifiMode.ap     ? 2
+        :                            3);  // apsta
+    return esp_wifi_set_mode(hw_mode) == ESP_OK;
 }
 
 bool wifi_hw_sta_configure(uint port, ref const WifiStaConfig cfg)
 {
+    _sta_status_message = null;
+
+    if (cfg.ssid.length > 32)
+    {
+        _sta_status_message = "STA SSID is too long";
+        return false;
+    }
+    if (cfg.password.length > 64)
+    {
+        _sta_status_message = "STA password is too long";
+        return false;
+    }
+    if (cfg.pmf_required)
+    {
+        _sta_status_message = "STA PMF required is not supported";
+        return false;
+    }
+
     // Stack buffers for null-termination (SSID max 32, password max 64)
     char[33] ssid_z = 0;
     char[65] pw_z = 0;
@@ -97,17 +121,34 @@ bool wifi_hw_sta_configure(uint port, ref const WifiStaConfig cfg)
 
     bool has_bssid = cfg.bssid != typeof(cfg.bssid).init;
 
-    return ow_wifi_sta_config(
+    if (ow_wifi_sta_config(
         cfg.ssid.length > 0 ? ssid_z.ptr : null,
         cfg.password.length > 0 ? pw_z.ptr : null,
-        has_bssid ? cfg.bssid.ptr : null) != 0;
+        has_bssid ? cfg.bssid.ptr : null) == 0)
+    {
+        _sta_status_message = "STA config rejected by ESP-IDF";
+        return false;
+    }
+
+    return true;
+}
+
+const(char)[] wifi_hw_sta_status_message(uint port)
+{
+    if (_sta_status_message.length != 0)
+        return _sta_status_message;
+    return esp_wifi_sta_reason_message(_sta_disconnect_reason);
 }
 
 bool wifi_hw_sta_connect(uint port)
 {
-    _evt_sta_connected = false;
-    _evt_sta_disconnected = false;
-    return esp_wifi_connect() == ESP_OK;
+    _sta_status_message = null;
+    _sta_disconnect_reason = 0;
+    auto rc = esp_wifi_connect();
+    if (rc == ESP_OK)
+        return true;
+    _sta_status_message = esp_wifi_error_message(rc);
+    return false;
 }
 
 bool wifi_hw_sta_disconnect(uint port)
@@ -129,6 +170,13 @@ bool wifi_hw_ap_configure(uint port, ref const WifiApConfig cfg)
         cfg.ssid.length > 0 ? ssid_z.ptr : null,
         cfg.password.length > 0 ? pw_z.ptr : null,
         cfg.channel, cfg.max_clients, cfg.hidden ? 1 : 0) != 0;
+}
+
+bool wifi_hw_ap_set_max_clients(uint port, ubyte max_clients)
+{
+    if (port != 0 || max_clients > wifi_max_ap_clients)
+        return false;
+    return ow_wifi_ap_set_max_clients(max_clients) != 0;
 }
 
 size_t wifi_hw_ap_get_clients(uint port, WifiStaInfo[] buf)
@@ -175,14 +223,39 @@ void wifi_hw_set_rx_callback(uint port, WifiRxCallback cb)
 
 bool wifi_hw_raw_tx(uint port, const(ubyte)[] frame)
 {
-    // TODO: esp_wifi_80211_tx
-    return false;
+    if (frame.length == 0 || frame.length > 1500)
+        return false;
+    // ifx = 0 (WIFI_IF_STA): always present in our monitor + sta + ap modes.
+    // en_sys_seq = 1: let the MAC fill the sequence number so injected frames
+    // don't collide with the radio's own outgoing sequence space.
+    return ow_wifi_raw_tx(0, frame.ptr, cast(int)frame.length, 1) != 0;
 }
 
 void wifi_hw_set_raw_rx_callback(uint port, WifiRawRxCallback cb)
 {
-    // TODO: esp_wifi_set_promiscuous + esp_wifi_set_promiscuous_rx_cb
     _raw_rx_cb = cb;
+
+    if (cb is null)
+    {
+        ow_wifi_set_promiscuous(0, 0);
+        ow_wifi_set_promiscuous_callback(null);
+        return;
+    }
+
+    ow_wifi_set_promiscuous_callback(&promisc_trampoline);
+    // Filter: management + data + control + misc + FCS-fail. The FCSFAIL
+    // bit is what lets us see corrupted frames -- the discriminator we need
+    // for "is the antenna seeing anything at all" vs "frames are framing
+    // correctly but content is wrong".
+    enum uint WIFI_PROMIS_FILTER_MASK_ALL_WITH_FCSFAIL = 0xE00000FF;
+    ow_wifi_set_promiscuous(1, WIFI_PROMIS_FILTER_MASK_ALL_WITH_FCSFAIL);
+}
+
+bool wifi_hw_set_channel(uint port, ubyte primary)
+{
+    // secondary=0 -> HT20 (no 40 MHz extension). The vast majority of 2.4GHz
+    // deployments are HT20; if we ever want HT40 we extend this signature.
+    return ow_wifi_set_channel(primary, 0) != 0;
 }
 
 // Queries
@@ -220,44 +293,17 @@ void wifi_hw_set_event_callback(uint port, WifiEventCallback cb)
     _event_cb = cb;
 }
 
-// Poll -- check ISR-set flags and deliver events to D callback.
-// Called from main loop since ESP events arrive on the event task.
 void wifi_hw_poll(uint port)
 {
     if (_event_cb is null)
         return;
 
     Wifi w = Wifi(0);
-
-    if (_evt_sta_connected)
+    while (_wifi_evt_head != _wifi_evt_tail)
     {
-        _evt_sta_connected = false;
-        _event_cb(w, WifiEvent.sta_connected, null);
-    }
-    if (_evt_sta_disconnected)
-    {
-        _evt_sta_disconnected = false;
-        _event_cb(w, WifiEvent.sta_disconnected, null);
-    }
-    if (_evt_ap_started)
-    {
-        _evt_ap_started = false;
-        _event_cb(w, WifiEvent.ap_started, null);
-    }
-    if (_evt_ap_stopped)
-    {
-        _evt_ap_stopped = false;
-        _event_cb(w, WifiEvent.ap_stopped, null);
-    }
-    if (_evt_ap_sta_connected)
-    {
-        _evt_ap_sta_connected = false;
-        _event_cb(w, WifiEvent.ap_sta_connected, _evt_ap_sta_mac.ptr);
-    }
-    if (_evt_ap_sta_disconnected)
-    {
-        _evt_ap_sta_disconnected = false;
-        _event_cb(w, WifiEvent.ap_sta_disconnected, _evt_ap_sta_mac.ptr);
+        auto slot = &_wifi_evt_queue[_wifi_evt_tail & (wifi_evt_cap - 1)];
+        _wifi_evt_tail++;
+        _event_cb(w, slot.event, slot.has_mac ? slot.mac.ptr : null);
     }
 }
 
@@ -283,41 +329,134 @@ __gshared bool _opened;
 __gshared WifiEventCallback _event_cb;
 __gshared WifiRxCallback _rx_cb;
 __gshared WifiRawRxCallback _raw_rx_cb;
+__gshared int _sta_disconnect_reason;
+__gshared const(char)[] _sta_status_message;
 
-// Flags set from ESP event task, polled from main loop
-__gshared bool _evt_sta_connected;
-__gshared bool _evt_sta_disconnected;
-__gshared bool _evt_ap_started;
-__gshared bool _evt_ap_stopped;
-__gshared bool _evt_ap_sta_connected;
-__gshared bool _evt_ap_sta_disconnected;
-__gshared ubyte[6] _evt_ap_sta_mac;
+struct WifiQueuedEvent
+{
+    WifiEvent event;
+    ubyte[6] mac;
+    bool has_mac;
+}
+enum size_t wifi_evt_cap = 8;
+__gshared WifiQueuedEvent[wifi_evt_cap] _wifi_evt_queue;
+__gshared uint _wifi_evt_head;
+__gshared uint _wifi_evt_tail;
 
-// Event trampolines -- called from ESP event task via C shim
-extern(C) void sta_event_trampoline(int event_id, void*, int) nothrow @nogc
+void push_wifi_evt(WifiEvent event, const ubyte* mac = null) nothrow @nogc
+{
+    if (_wifi_evt_head - _wifi_evt_tail >= wifi_evt_cap)
+        _wifi_evt_tail++;
+    auto slot = &_wifi_evt_queue[_wifi_evt_head & (wifi_evt_cap - 1)];
+    slot.event = event;
+    slot.has_mac = mac !is null;
+    if (mac !is null)
+        slot.mac[] = mac[0 .. 6];
+    _wifi_evt_head++;
+}
+
+extern(C) void sta_event_trampoline(int event_id, void*, int data_len) nothrow @nogc
 {
     if (event_id == WIFI_EVENT_STA_CONNECTED)
-        _evt_sta_connected = true;
+    {
+        _sta_status_message = null;
+        _sta_disconnect_reason = 0;
+        push_wifi_evt(WifiEvent.sta_connected);
+    }
     else if (event_id == WIFI_EVENT_STA_DISCONNECTED)
-        _evt_sta_disconnected = true;
+    {
+        _sta_disconnect_reason = data_len;
+        _sta_status_message = null;
+        push_wifi_evt(WifiEvent.sta_disconnected);
+    }
+}
+
+const(char)[] esp_wifi_error_message(int rc) nothrow @nogc
+{
+    switch (rc)
+    {
+        case ESP_OK:
+            return null;
+        default:
+            return "ESP-IDF rejected STA request";
+    }
+}
+
+const(char)[] esp_wifi_sta_reason_message(int reason) nothrow @nogc
+{
+    switch (reason)
+    {
+        case 0:
+            return null;
+        case 1:
+            return "Disconnected: unspecified reason";
+        case 2:
+            return "Authentication expired";
+        case 4:
+            return "Association expired";
+        case 5:
+            return "AP has too many clients";
+        case 6:
+            return "Not authenticated";
+        case 7:
+            return "Not associated";
+        case 8:
+            return "Association left";
+        case 9:
+            return "Association requires authentication";
+        case 13:
+            return "Invalid 802.11 information element";
+        case 14:
+            return "WPA MIC failure";
+        case 15:
+            return "WPA 4-way handshake timed out";
+        case 16:
+            return "WPA group key update timed out";
+        case 17:
+            return "WPA information element changed during handshake";
+        case 18:
+            return "WPA group cipher is invalid";
+        case 19:
+            return "WPA pairwise cipher is invalid";
+        case 20:
+            return "WPA AKM suite is invalid";
+        case 21:
+            return "Unsupported RSN information element version";
+        case 22:
+            return "Invalid RSN capabilities";
+        case 23:
+            return "802.1X authentication failed";
+        case 24:
+            return "Cipher suite rejected";
+        case 200:
+            return "AP beacon timed out";
+        case 201:
+            return "Target AP not found";
+        case 202:
+            return "Authentication failed";
+        case 203:
+            return "Association failed";
+        case 204:
+            return "WPA handshake timed out";
+        case 205:
+            return "Connection failed";
+        case 207:
+            return "Roaming";
+        default:
+            return "Disconnected by WiFi driver";
+    }
 }
 
 extern(C) void ap_event_trampoline(int event_id, void* event_data, int) nothrow @nogc
 {
     if (event_id == WIFI_EVENT_AP_START)
-        _evt_ap_started = true;
+        push_wifi_evt(WifiEvent.ap_started);
     else if (event_id == WIFI_EVENT_AP_STOP)
-        _evt_ap_stopped = true;
+        push_wifi_evt(WifiEvent.ap_stopped);
     else if (event_id == WIFI_EVENT_AP_STACONNECTED && event_data !is null)
-    {
-        _evt_ap_sta_mac[] = (cast(ubyte*)event_data)[0 .. 6];
-        _evt_ap_sta_connected = true;
-    }
+        push_wifi_evt(WifiEvent.ap_sta_connected, cast(ubyte*)event_data);
     else if (event_id == WIFI_EVENT_AP_STADISCONNECTED && event_data !is null)
-    {
-        _evt_ap_sta_mac[] = (cast(ubyte*)event_data)[0 .. 6];
-        _evt_ap_sta_disconnected = true;
-    }
+        push_wifi_evt(WifiEvent.ap_sta_disconnected, cast(ubyte*)event_data);
 }
 
 // RX trampoline -- called from C shim's esp_wifi_internal_reg_rxcb handler.
@@ -328,6 +467,25 @@ extern(C) void rx_trampoline(const(ubyte)* data, int len, int iface) nothrow @no
         _rx_cb(Wifi(0), cast(WifiVif)iface, data[0 .. len]);
 }
 
+// Promiscuous trampoline -- called from C shim for every 802.11 frame the
+// radio decodes (including FCS-fail frames when the filter bit is set).
+// rx_state non-zero == FCS failed; we forward unchanged and let the
+// subscriber decide what to do with broken frames.
+extern(C) void promisc_trampoline(int type, int rssi, int channel,
+                                  int rate, int fcs_fail, int len,
+                                  const(ubyte)* payload) nothrow @nogc
+{
+    if (_raw_rx_cb is null || len <= 0 || payload is null)
+        return;
+    // Drop FCS-fail frames for now -- the raw RX callback signature has no
+    // place to surface the bad-FCS flag yet, and forwarding garbage frames
+    // confuses subscribers that assume valid framing. The driver-level RX
+    // dropped counter is bumped at the iface layer instead.
+    if (fcs_fail)
+        return;
+    _raw_rx_cb(Wifi(0), payload[0 .. len], cast(byte)rssi, cast(ubyte)channel);
+}
+
 // C shim functions (ow_shim.c) -- needed for macros, complex structs, netif
 extern(C) nothrow @nogc
 {
@@ -335,9 +493,17 @@ extern(C) nothrow @nogc
     void ow_wifi_deinit();
     int ow_wifi_sta_config(const(char)* ssid, const(char)* password, const(ubyte)* bssid);
     int ow_wifi_ap_config(const(char)* ssid, const(char)* password, ubyte channel, ubyte max_conn, ubyte hidden);
+    int ow_wifi_ap_set_max_clients(ubyte max_conn);
     int ow_wifi_set_rx_callback(void function(const(ubyte)*, int, int) nothrow @nogc cb);
     void ow_wifi_set_sta_callback(void function(int, void*, int) nothrow @nogc);
     void ow_wifi_set_ap_callback(void function(int, void*, int) nothrow @nogc);
+    int ow_wifi_set_promiscuous(int enable, uint filter_mask);
+    void ow_wifi_set_promiscuous_callback(
+        void function(int type, int rssi, int channel,
+                      int rate, int fcs_fail, int len,
+                      const(ubyte)* payload) nothrow @nogc cb);
+    int ow_wifi_set_channel(int primary, int secondary);
+    int ow_wifi_raw_tx(int ifx, const(ubyte)* frame, int len, int en_sys_seq);
 }
 
 // Direct ESP-IDF calls

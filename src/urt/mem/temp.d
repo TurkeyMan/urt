@@ -1,5 +1,6 @@
 module urt.mem.temp;
 
+import urt.attribute : fast_data;
 import urt.mem;
 
 version = DebugTempAlloc;
@@ -28,7 +29,22 @@ void[] talloc(size_t size) pure
 
 void[] talloc_aligned(size_t size, size_t alignment) pure
 {
-    assert(false);
+    import urt.util;
+
+    debug assert(alignment != 0 && is_power_of_2(alignment), "alignment must be a power of two");
+    assert(size <= TempMemSize / 2, "Requested temp memory size is too large");
+
+    void[] mem = tmem_tail();
+    auto ptr = align_up(mem.ptr, alignment);
+    size_t adjust = ptr - mem.ptr;
+    if (adjust + size > mem.length)
+    {
+        mem = tmem_reset();
+        ptr = align_up(mem.ptr, alignment);
+        adjust = ptr - mem.ptr;
+    }
+    tmem_advance(adjust + size);
+    return ptr[0 .. size];
 }
 
 void[] trealloc(void[] mem, size_t newSize) pure
@@ -199,7 +215,7 @@ nothrow @nogc:
 
     override void[] alloc(size_t bytes, size_t alignment = DefaultAlign) pure
     {
-        return talloc(bytes);
+        return talloc_aligned(bytes, alignment);
     }
 
     override void[] realloc(void[] mem, size_t newSize, size_t alignment = DefaultAlign) pure
@@ -227,8 +243,18 @@ private:
 
 private:
 
-static void[TempMemSize] tempMem;
-static ushort alloc_offset = 0;
+// TODO: we shpuld really have some indicator if the machine is multi-core or not...
+//       this is doomed the moment we light up the esp32's second core!
+version (BareMetal)
+{
+    @fast_data align(size_t.alignof) __gshared void[TempMemSize] tempMem;
+    @fast_data __gshared ushort alloc_offset = 0;
+}
+else
+{
+    align(size_t.alignof) static void[TempMemSize] tempMem;
+    static ushort alloc_offset = 0;
+}
 
 void[] tmem_tail() pure
 {

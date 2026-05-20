@@ -6,23 +6,24 @@
 /// ones. Layout MUST match include/bl_os_adapter/bl_os_adapter.h exactly
 /// -- the blob indexes the struct by offset.
 ///
-/// Threading model (initial): drain-on-update, cooperative single-thread.
-/// "Tasks" are recorded but not actually scheduled; we expect the blob to
-/// be largely event-driven once init finishes. If a real blob task turns
-/// out to need preemption we'll revisit (fibres, or per-IRQ dispatch).
+/// Threading model: cooperative single-thread with wifi_main running as a
+/// urt fibre. Blob sync primitives are represented as stateful objects; calls
+/// that would block yield an AwakenEvent, and ISR/host-side signals mutate the
+/// primitive state so the host can resume the fibre when the event is ready.
 ///
-/// Anything not yet implemented returns success / null and logs a TODO.
-/// We harden incrementally as init progresses and we discover what
-/// libwifi.a actually exercises.
+/// Anything not yet implemented returns conservative success/null where the
+/// current open path requires it, and is hardened as more of the blob surface
+/// is exercised.
 
 module urt.driver.bl808_m0.bl_ops;
 
-import urt.attribute : fast_data;
+import urt.attribute : section;
 
 version (BL808_M0):
 
 import urt.mem.alloc : alloc, free, MemFlags;
-import urt.driver.bl618.irq   : irq_disable, irq_enable;
+import urt.mem       : memset;
+import urt.driver.bl618.irq   : irq_disable, irq_enable, set_interrupts;
 import urt.driver.bl618.timer : mtime_read, mtime_freq_hz;
 import urt.fibre              : Fibre, AwakenEvent, FibreEntryFunc, ResumeHandler,
                                 yield, isInFibre;
@@ -31,11 +32,6 @@ import urt.lifetime           : emplace;
 
 nothrow @nogc:
 
-
-// ====================================================================
-// bl_ops_funcs_t layout -- mirrors bl_os_adapter.h. The blob references
-// this struct by member offset; do not reorder.
-// ====================================================================
 
 enum BL_OS_ADAPTER_VERSION = 0x00000001;
 
@@ -112,78 +108,58 @@ struct bl_ops_funcs_t
 }
 
 
-// ====================================================================
-// Implementations. Naming: bl_ops_<member-without-underscore>.
-// ====================================================================
-
-// Logging: route to UART0 so blob diagnostics surface during bring-up. The
-// blob prints a lot during init/teardown; if this becomes noise once wifi
-// is reliable, drop bl_ops_printf back to {} and leave puts wired.
-//
-// We don't run a real vfprintf -- printing the format string verbatim is
-// enough to localise where the blob is at; the args are dropped. uart0_puts
-// is null-terminator-tolerant via uart0_hw_puts(slice).
-
 import urt.driver.bl618.uart : uart0_hw_puts;
-
-private size_t cstr_len(const(char)* s) nothrow @nogc
-{
-    size_t n = 0;
-    if (s !is null)
-        while (s[n] != 0) ++n;
-    return n;
-}
 
 void bl_ops_printf(const(char)* fmt, ...)
 {
-    uart0_hw_puts("[P]");
-    if (fmt !is null)
-        uart0_hw_puts(fmt[0 .. cstr_len(fmt)]);
 }
 
 void bl_ops_puts(const(char)* s)
 {
-    uart0_hw_puts("[U]");
-    if (s !is null)
-    {
-        uart0_hw_puts(s[0 .. cstr_len(s)]);
-        uart0_hw_puts("\n");
-    }
 }
 
 void bl_ops_log_write(uint level, const(char)* tag, const(char)* file, int line, const(char)* fmt, ...)
 {
-    uart0_hw_puts("[L]");
-    if (fmt !is null)
-        uart0_hw_puts(fmt[0 .. cstr_len(fmt)]);
+}
+
+private size_t safe_cstr(const(char)* s) nothrow @nogc
+{
+    if (s is null)
+        return 0;
+    size_t addr = cast(size_t)s;
+    // M0 valid: flash 0x58000000+, OCRAM 0x22000000+/0x40000000+, TCM 0x6202F000+
+    bool in_range = (addr >= 0x22000000 && addr < 0x80000000);
+    if (!in_range)
+        return 0;
+    ubyte first = cast(ubyte)s[0];
+    if (first < 0x20 || first > 0x7E)
+        return 0;
+    size_t n = 0;
+    while (n < 256 && s[n] != 0)
+        ++n;
+    return n;
 }
 
 void bl_ops_assert(const(char)* file, int line, const(char)* func, const(char)* expr)
 {
     import urt.io : writef;
-    __gshared uint n_asserts;
-    ++n_asserts;
-    // Suppress the well-known noisy ipc_host.c:181 cnt-mismatch assert (fires
-    // every cmd; LMAC writes a pointer to src_id rather than a sequence
-    // counter on this chip variant -- functionally harmless). The file:line
-    // 181 is unique enough as a filter.
-    if (n_asserts <= 64 && line != 181)
-    {
-        uart0_hw_puts("\n*** BLOB ASSERT: ");
-        if (file !is null)
-            uart0_hw_puts(file[0 .. cstr_len(file)]);
-        writef(":{0} ", line);
-        if (func !is null)
-        {
-            uart0_hw_puts(func[0 .. cstr_len(func)]);
-            uart0_hw_puts("() ");
-        }
-        if (expr !is null)
-            uart0_hw_puts(expr[0 .. cstr_len(expr)]);
-        uart0_hw_puts(" ***\n");
-    }
-    // Don't halt -- return and let the blob continue. Throttled to first
-    // 16 hits so a tight assert loop doesn't drown the rest of the log.
+    uart0_hw_puts("\n*** BLOB ASSERT: ");
+    print_strarg("file", file);
+    writef(":{0} ", line);
+    print_strarg("func", func);
+    print_strarg("expr", expr);
+    uart0_hw_puts(" ***\n");
+    assert(false, "blob assert");
+}
+
+private void print_strarg(string label, const(char)* s) nothrow @nogc
+{
+    import urt.io : writef;
+    size_t n = safe_cstr(s);
+    if (n > 0)
+        uart0_hw_puts(s[0 .. n]);
+    else
+        writef("<{0}={1,08X} bogus>", label, cast(uint)cast(size_t)s);
 }
 
 int bl_ops_init() { return 0; }
@@ -192,24 +168,20 @@ int bl_ops_init() { return 0; }
 // bit; symmetric with _exit_critical taking that token back.
 uint bl_ops_enter_critical()
 {
-    // BL618/M0 irq driver only exposes global enable/disable; we don't
-    // currently read prior state. Always returns 0; the blob just hands
-    // it back, never inspects it.
-    uart0_hw_puts("[crit+]");
-    irq_disable();
-    return 0;
+    return irq_disable() ? 1 : 0;
 }
 
 void bl_ops_exit_critical(uint level)
 {
-    uart0_hw_puts("[crit-]");
-    irq_enable();
+    set_interrupts(level != 0);
 }
 
-// Time / sleep
+// Time / sleep. The blob treats "tick" values like an RTOS tick counter,
+// and AP station timeout code compares them against constants such as
+// 30000. Use a 1 kHz tick base so those constants retain their SDK meaning.
 ulong bl_ops_get_time_ms() => mtime_read() / (mtime_freq_hz / 1000);
-uint  bl_ops_get_tick()    => cast(uint)mtime_read();
-uint  bl_ops_ms_to_tick(uint ms) => ms * (mtime_freq_hz / 1000);
+uint  bl_ops_get_tick()    => cast(uint)bl_ops_get_time_ms();
+uint  bl_ops_ms_to_tick(uint ms) => ms;
 
 int bl_ops_msleep(long ms)
 {
@@ -233,13 +205,13 @@ int bl_ops_msleep(long ms)
 
 int bl_ops_sleep(uint s) => bl_ops_msleep(s * 1000L);
 
-BL_TimeOut_t bl_ops_set_timeout() => cast(uint)mtime_read();
+BL_TimeOut_t bl_ops_set_timeout() => bl_ops_get_tick();
 
 int bl_ops_check_timeout(BL_TimeOut_t start, BL_TickType_t* ticks_to_wait)
 {
     if (ticks_to_wait is null)
         return 0;
-    uint elapsed = cast(uint)mtime_read() - start;
+    uint elapsed = bl_ops_get_tick() - start;
     if (elapsed >= *ticks_to_wait)
         return 1;
     *ticks_to_wait -= elapsed;
@@ -249,8 +221,7 @@ int bl_ops_check_timeout(BL_TimeOut_t start, BL_TickType_t* ticks_to_wait)
 // Memory
 void* bl_ops_malloc(uint size)
 {
-    void[] m = alloc(size);
-    return m.ptr;
+    return alloc(size, uint.sizeof, MemFlags.dma).ptr;
 }
 
 void bl_ops_free(void* p)
@@ -263,9 +234,9 @@ void bl_ops_free(void* p)
 
 void* bl_ops_zalloc(uint size)
 {
-    void* p = bl_ops_malloc(size);
+    void* p = alloc(size, uint.sizeof, MemFlags.dma).ptr;
     if (p !is null)
-        (cast(ubyte*)p)[0 .. size] = 0;
+        memset(p, 0, size);
     return p;
 }
 
@@ -300,40 +271,21 @@ int bl_ops_mutex_unlock(BL_Mutex_t h)
     return 0;
 }
 
-// Sem instrumentation: keep a small registry so we can identify which sem
-// in a probe message (by sequential id). Helps tell which sem wifi_main is
-// parked on vs which one a sem_give wakes.
-__gshared uint _sem_next_id = 1;
-struct shim_sem_dbg { shim_sem base; uint id; }
-
 BL_Sem_t bl_ops_sem_create(uint init)
 {
-    import urt.io : writef;
-    auto s = cast(shim_sem_dbg*)bl_ops_zalloc(shim_sem_dbg.sizeof);
+    auto s = cast(shim_sem*)bl_ops_zalloc(shim_sem.sizeof);
     if (s !is null)
-    {
-        s.base.count = cast(int)init;
-        s.id = _sem_next_id++;
-        writef("[s:sem_create #{0}]", s.id);
-    }
+        s.count = cast(int)init;
     return s;
 }
 void bl_ops_sem_delete(BL_Sem_t h) { bl_ops_free(h); }
 int  bl_ops_sem_take(BL_Sem_t h, uint ticks)
 {
-    import urt.io : writef;
     auto s = cast(shim_sem*)h;
     if (s is null) return -1;
-    auto d = cast(shim_sem_dbg*)h;
 
-    bool first_wait = (s.count == 0);
     while (s.count == 0)
     {
-        if (first_wait)
-        {
-            first_wait = false;
-            writef("[s:sem_take.wait #{0}]", d.id);
-        }
         if (isInFibre())
         {
             auto ev = InPlace!SemAwaken(s);
@@ -347,51 +299,32 @@ int  bl_ops_sem_take(BL_Sem_t h, uint ticks)
 }
 int bl_ops_sem_give(BL_Sem_t h)
 {
-    import urt.io : writef;
     auto s = cast(shim_sem*)h;
     if (s is null) return -1;
-    auto d = cast(shim_sem_dbg*)h;
-    writef("[s:sem_give #{0}]", d.id);
     ++s.count;
+    wifi_signal_ready();
     return 0;
 }
 
-// Event-group identity tracking (companion to sem identity tracking).
-// Lets us pair sends with waits across the blob's internal control flow.
-__gshared uint _evg_next_id = 1;
-struct shim_event_dbg { shim_event base; uint id; }
-
 BL_EventGroup_t bl_ops_event_group_create()
 {
-    import urt.io : writef;
-    auto e = cast(shim_event_dbg*)bl_ops_zalloc(shim_event_dbg.sizeof);
-    if (e !is null)
-    {
-        e.id = _evg_next_id++;
-        writef("[s:evg_create #{0}]", e.id);
-    }
-    return e;
+    return cast(shim_event*)bl_ops_zalloc(shim_event.sizeof);
 }
 void bl_ops_event_group_delete(BL_EventGroup_t h) { bl_ops_free(h); }
 uint bl_ops_event_group_send(BL_EventGroup_t h, uint bits)
 {
-    import urt.io : writef;
     auto e = cast(shim_event*)h;
     if (e is null) return 0;
-    auto d = cast(shim_event_dbg*)h;
-    writef("[s:evg_send #{0} bits={1,08X}]", d.id, bits);
     e.bits |= bits;
+    wifi_signal_ready();
     return e.bits;
 }
 uint bl_ops_event_group_wait(BL_EventGroup_t h, uint wait_bits, int clear_on_exit, int wait_all, uint block_ticks)
 {
-    import urt.io : writef;
     auto e = cast(shim_event*)h;
     if (e is null) return 0;
-    auto d = cast(shim_event_dbg*)h;
 
     bool waitAll = wait_all != 0;
-    bool first_wait = true;
     while (true)
     {
         uint got = e.bits & wait_bits;
@@ -400,12 +333,6 @@ uint bl_ops_event_group_wait(BL_EventGroup_t h, uint wait_bits, int clear_on_exi
             if (clear_on_exit)
                 e.bits &= ~got;
             return got;
-        }
-
-        if (first_wait)
-        {
-            first_wait = false;
-            writef("[s:evg_wait.park #{0} bits={1,08X}{2}]", d.id, wait_bits, waitAll ? " all" : "");
         }
 
         if (isInFibre())
@@ -418,21 +345,16 @@ uint bl_ops_event_group_wait(BL_EventGroup_t h, uint wait_bits, int clear_on_exi
     }
 }
 
-int bl_ops_event_register(int type, void* cb, void* arg) { uart0_hw_puts("[s:event_reg]");  return 0; }
-int bl_ops_event_notify(int evt, int val)                { uart0_hw_puts("[s:event_notify]"); return 0; }
+int bl_ops_event_register(int type, void* cb, void* arg) { return 0; }
+int bl_ops_event_notify(int evt, int val)                { return 0; }
 
 // "Gaint" (giant) lock -- global serialising lock. Map to enter_critical.
-// Probe first-only to avoid log spam in hot critical sections.
 void bl_ops_lock_gaint()
 {
-    __gshared bool seen;
-    if (!seen) { seen = true; uart0_hw_puts("[s:lock_gaint.first]"); }
     irq_disable();
 }
 void bl_ops_unlock_gaint()
 {
-    __gshared bool seen;
-    if (!seen) { seen = true; uart0_hw_puts("[s:unlock_gaint.first]"); }
     irq_enable();
 }
 
@@ -453,6 +375,24 @@ void bl_ops_unlock_gaint()
 
 __gshared Fibre*       _wifi_fibre;
 __gshared AwakenEvent  _wifi_pending_event;
+
+extern(D)
+{
+    alias WifiWakeCallback = void function() nothrow @nogc;
+    private __gshared WifiWakeCallback _wifi_wake_callback;
+
+    public void wifi_set_wake_callback(WifiWakeCallback cb)
+    {
+        _wifi_wake_callback = cb;
+    }
+
+    public void wifi_signal_ready()
+    {
+        auto cb = _wifi_wake_callback;
+        if (cb !is null)
+            cb();
+    }
+}
 
 private extern (D) ResumeHandler wifi_yield_handler(ref Fibre yielding, AwakenEvent ev) nothrow @nogc
 {
@@ -477,14 +417,6 @@ private void yield_nothrow(AwakenEvent ev) nothrow @nogc
 /// the host's bl_send_reset is never seen.
 public __gshared bool wifi_main_in_main_loop;
 
-// EMB-side A2E handlers exported by libwifi.a. On vendor hw the MAC intc
-// fires when host writes A2E_TRIGGER, mac_irq dispatches to these via the
-// intc table. In our setup the intc never asserts (istat stays 0), so we
-// manually dispatch from the pump.
-extern(C) void ipc_emb_msg_irq();
-extern(C) void ipc_emb_tx_irq();
-extern(C) void ipc_emb_cfmback_irq();
-
 /// Resume the wifi fibre if its awaken event is ready (or if it's just
 /// been spawned and hasn't run yet). Safe to call repeatedly; a no-op
 /// when the fibre is finished or blocked on an unsatisfied event.
@@ -498,111 +430,21 @@ public void wifi_fibre_pump()
     _wifi_fibre.resume();
 }
 
-/// Single host-side pump step. Returns true if the fibre was resumable
-/// (we attempted to advance it), false if the fibre is dead or wedged on
-/// an awaken event we can't satisfy from the host side -- the host
-/// caller should give up its blocking wait in that case.
+/// Host-side pump step for sync waits (bl_ops_*_wait called from host
+/// context, not from the fibre). Returns true if the fibre is still live;
+/// false if dead and the wait must give up.
 ///
-/// IRQ simulation: on the real chip wifi_main wakes from task_wait when
-/// the IPC hw register write fires an IRQ on the LMAC core. We have no
-/// A2E IRQ -- both "cores" are the same M0 -- so we poll the trigger
-/// register and manually dispatch the EMB-side handlers. Those handlers
-/// should wake wifi_main through the blob's normal task-notify path.
+/// All wifi_main wakes come from real IRQs (vec 70 mac_irq, vec 79
+/// bl_irq_handler) calling into the blob's natural shim chain
+/// (sem_give/event_group_send/queue_send/task_notify), which makes the
+/// appropriate AwakenEvent ready. No synthetic wakes, no manual A2E
+/// dispatch -- if wifi_main doesn't progress, the real IRQ wiring is wrong
+/// and that's the bug to fix.
 private bool wifi_pump_one_for_host()
 {
     if (_wifi_fibre is null || _wifi_fibre.isFinished)
         return false;
-
-    // EXPERIMENT: manual EMB-IRQ dispatch. The IPC peripheral's A2E side
-    // doesn't fire a CLIC IRQ on this part (istat stays 0 even when host
-    // writes A2E_TRIGGER), so the blob's IRQ-driven processing chain never
-    // runs. Poll the trigger here and dispatch directly to the EMB-side
-    // handlers libwifi.a normally calls from mac_irq. The handlers do
-    // ke_evt_set() to schedule the actual processing in wifi_main's
-    // ke_evt_schedule path -- so a subsequent pump should run it.
-    bool dispatched_a2e;
-    uint notify_before = _wifi_task.notify_count;
-    if (wifi_main_in_main_loop)
-    {
-        auto trig_reg = cast(uint*)cast(size_t)0x24800000;
-        uint a2e = *trig_reg;
-        if (a2e != 0)
-        {
-            import urt.io : writef;
-            __gshared uint dispatch_n;
-            writef("[manual-dispatch #{0} a2e={1,08X}]", ++dispatch_n, a2e);
-            if (a2e & 0x02) ipc_emb_msg_irq();         // A2E_MSG
-            if (a2e & 0x10) ipc_emb_cfmback_irq();     // A2E_RXDESC_BACK
-            if (a2e & 0x20) ipc_emb_cfmback_irq();     // A2E_RXBUF_BACK
-            if (a2e & 0xFF00) ipc_emb_tx_irq();        // A2E_TXDESC bits 8-15
-            dispatched_a2e = true;
-            // Clear the bits we processed. Mirrors what the MAC intc ACK
-            // would do on real silicon.
-            *trig_reg = a2e & 0x01;  // keep DBG bit (handler-less)
-        }
-    }
-
-    // Do not manufacture task notifications on every host poll. In the
-    // vendor FreeRTOS flow wifi_main wakes from ISR notification only; a
-    // permanent synthetic notify turns its idle wait into a tight loop and
-    // can hide the actual event ordering. The EMB-side handlers normally
-    // notify via the blob's OS adapter; keep one fallback for manual-dispatch
-    // paths that consumed A2E work without producing a notify.
-    if (dispatched_a2e && _wifi_task.notify_count == notify_before)
-        bl_ops_task_notify(cast(void*)&_wifi_task);
-
-    // Periodic census dump: every ~131k pumps, print IRQ-delivery counters
-    // and live IPC peripheral state.
-    //   c=N        - total trap count from _irq_dispatch
-    //   h70/h79/h7 - per-line histogram (LMAC mac / LMAC ipc / timer)
-    //   a2e        - APP2EMB_TRIGGER at 0x24800000 (host->emb doorbell bits)
-    //   raw        - E2A_RAWSTATUS at 0x24800004 (emb->app raw bits)
-    //   um         - E2A_UNMASK    at 0x2480000C (which raw bits raise IRQ 79)
-    // If a2e stays non-zero after host wrote it, wifi_main isn't polling it
-    // (or doesn't know the bit's meaning). If a2e goes to zero immediately
-    // after spawn, wifi_main is clobbering it during its Configure IPC step.
-    // Print full state on first call AND whenever a2e/raw/intc-status changes.
-    // Covers:
-    //   sig    - 0x24800140 IPC signature (vendor ipc_emb_init asserts == 0x49504332/"IPC2")
-    //   a2e    - 0x24800000 APP2EMB_TRIGGER
-    //   raw    - 0x24800004 EMB2APP_RAWSTATUS
-    //   um     - 0x2480000C E2A unmask
-    //   istat  - 0x24910000 MAC intc status (asserted lines)
-    //   ien_lo - 0x24910010 MAC intc enable [31:0]   -- intc_init writes here
-    //   ien_hi - 0x24910014 MAC intc enable [63:32]
-    {
-        import urt.io : writef;
-        import urt.driver.bl618.irq : irq_count, irq_histogram;
-
-        uint sig    = *cast(uint*)cast(size_t)0x24800140;
-        uint a2e    = *cast(uint*)cast(size_t)0x24800000;
-        uint raw    = *cast(uint*)cast(size_t)0x24800004;
-        uint um     = *cast(uint*)cast(size_t)0x2480000C;
-        uint istat  = *cast(uint*)cast(size_t)0x24910000;
-        uint ien_lo = *cast(uint*)cast(size_t)0x24910010;
-        uint ien_hi = *cast(uint*)cast(size_t)0x24910014;
-
-        __gshared uint last_a2e   = 0xDEADBEEF;
-        __gshared uint last_raw   = 0xDEADBEEF;
-        __gshared uint last_istat = 0xDEADBEEF;
-        __gshared uint last_h79;
-        if (a2e != last_a2e || raw != last_raw || istat != last_istat || irq_histogram[79] != last_h79)
-        {
-            last_a2e   = a2e;
-            last_raw   = raw;
-            last_istat = istat;
-            last_h79   = irq_histogram[79];
-            writef("[c={0} h70={1} h79={2} h7={3} sig={4,08X} a2e={5,08X} raw={6,08X} um={7,08X} istat={8,08X} ien={9,08X}/{10,08X}]",
-                irq_count, irq_histogram[70], irq_histogram[79], irq_histogram[7],
-                sig, a2e, raw, um, istat, ien_hi, ien_lo);
-        }
-    }
-
-    // Resume the fibre when its pending event is ready (or there's none yet).
-    // If not ready, still return true so the host's wait loop keeps polling --
-    // the event will eventually become ready (timer expires, sem given, etc).
-    if (_wifi_pending_event is null || _wifi_pending_event.ready())
-        wifi_fibre_pump();
+    wifi_fibre_pump();
     return true;
 }
 
@@ -666,25 +508,8 @@ __gshared shim_task _wifi_task;
 
 int bl_ops_task_create(const(char)* name, void* entry, uint stack_depth, void* param, uint prio, BL_TaskHandle_t handle)
 {
-    // Probe: log every task create, with name (best effort - print up to
-    // 16 chars). We only spawn one fibre; if the blob asks for a second
-    // task, this lets us see it AND we currently fake-success.
-    uart0_hw_puts("[s:task_create ");
-    if (name !is null)
-    {
-        size_t n;
-        while (name[n] != 0 && n < 16)
-            ++n;
-        uart0_hw_puts(name[0 .. n]);
-    }
-    else uart0_hw_puts("<null>");
-    uart0_hw_puts("]");
-
     if (_wifi_fibre !is null)
-    {
-        uart0_hw_puts("[s:task_create FAKE_2ND]");
         return 0;  // already have one
-    }
 
     // FreeRTOS StackType_t is uint32_t -> stack_depth is words. Match
     // the vendor's 1536 words = 6KB if smaller is passed, otherwise
@@ -706,27 +531,19 @@ BL_TaskHandle_t bl_ops_task_notify_create()  => cast(void*)&_wifi_task;
 
 void bl_ops_task_notify(BL_TaskHandle_t h)
 {
-    import urt.io : writef;
     auto t = cast(shim_task*)h;
     if (t is null) return;
-    writef("[s:task_notify count={0}->{1}]", t.notify_count, t.notify_count + 1);
     ++t.notify_count;
+    wifi_signal_ready();
 }
 
 void bl_ops_task_wait(BL_TaskHandle_t h, uint ticks)
 {
-    import urt.io : write, writef;
     auto t = cast(shim_task*)h;
     if (t is null)
         return;
-    // Periodic heartbeat: every 65k parks, print so we know wifi_main is
-    // still alive in its main loop. If this stops printing, wifi_main has
-    // wedged.
-    __gshared uint park_count;
     while (t.notify_count == 0)
     {
-        if ((++park_count & 0xFFFF) == 1)
-            writef("[s:task_wait #{0}]", park_count);
         if (isInFibre())
         {
             auto ev = InPlace!TaskAwaken(t);
@@ -761,21 +578,14 @@ struct shim_queue
     uint   count;
 }
 
-// Queue identity tracking (companion to sem / evg identity tracking).
-__gshared uint _queue_next_id = 1;
-struct shim_queue_dbg { shim_queue base; uint id; }
-
 BL_MessageQueue_t bl_ops_queue_create(uint queue_len, uint item_size)
 {
-    import urt.io : writef;
-    auto q = cast(shim_queue_dbg*)bl_ops_zalloc(shim_queue_dbg.sizeof);
+    auto q = cast(shim_queue*)bl_ops_zalloc(shim_queue.sizeof);
     if (q is null) return null;
-    q.base.buf = cast(ubyte*)bl_ops_malloc(queue_len * item_size);
-    if (q.base.buf is null) { bl_ops_free(q); return null; }
-    q.base.item_size = item_size;
-    q.base.capacity  = queue_len;
-    q.id = _queue_next_id++;
-    writef("[s:queue_create #{0} len={1} item_size={2}]", q.id, queue_len, item_size);
+    q.buf = cast(ubyte*)bl_ops_malloc(queue_len * item_size);
+    if (q.buf is null) { bl_ops_free(q); return null; }
+    q.item_size = item_size;
+    q.capacity  = queue_len;
     return q;
 }
 void bl_ops_queue_delete(BL_MessageQueue_t h)
@@ -787,34 +597,24 @@ void bl_ops_queue_delete(BL_MessageQueue_t h)
 }
 int bl_ops_queue_send(BL_MessageQueue_t h, void* item, uint len)
 {
-    import urt.io : writef;
     auto q = cast(shim_queue*)h;
     if (q is null || q.count == q.capacity) return -1;
-    auto d = cast(shim_queue_dbg*)h;
-    writef("[s:queue_send #{0}]", d.id);
     auto slot = q.buf + q.head * q.item_size;
     slot[0 .. q.item_size] = (cast(ubyte*)item)[0 .. q.item_size];
     q.head = (q.head + 1) % q.capacity;
     ++q.count;
+    wifi_signal_ready();
     return 0;
 }
 int bl_ops_queue_send_wait(BL_MessageQueue_t h, void* item, uint len, uint ticks, int prio)
     => bl_ops_queue_send(h, item, len);
 int bl_ops_queue_recv(BL_MessageQueue_t h, void* item, uint len, uint ticks)
 {
-    import urt.io : writef;
     auto q = cast(shim_queue*)h;
     if (q is null) return -1;
-    auto d = cast(shim_queue_dbg*)h;
 
-    bool first_wait = true;
     while (q.count == 0)
     {
-        if (first_wait)
-        {
-            first_wait = false;
-            writef("[s:queue_recv.park #{0}]", d.id);
-        }
         if (isInFibre())
         {
             auto ev = InPlace!QueueAwaken(q);
@@ -878,21 +678,9 @@ int bl_ops_timer_start_periodic(BL_Timer_t h, long t_sec, long t_nsec)
     return 0;
 }
 
-// IRQ -- bl618 driver only has global enable/disable today. If the blob
-// actually attaches a handler, we'll know and either grow the urt API
-// (delegate that work to a separate agent) or wire it ad-hoc.
-void bl_ops_irq_attach(int n, void* f, void* arg)
-{
-    uart0_hw_puts("[s:irq_attach ");
-    char[3] dec;
-    uint v = cast(uint)n;
-    if (v >= 100) { dec[0] = cast(char)('0' + v/100); dec[1] = cast(char)('0' + (v/10)%10); dec[2] = cast(char)('0' + v%10); uart0_hw_puts(dec[]); }
-    else if (v >= 10) { dec[1] = cast(char)('0' + v/10); dec[2] = cast(char)('0' + v%10); uart0_hw_puts(dec[1..3]); }
-    else { dec[2] = cast(char)('0' + v); uart0_hw_puts(dec[2..3]); }
-    uart0_hw_puts("]");
-}
-void bl_ops_irq_enable(int n)  { uart0_hw_puts("[s:irq_en]"); }
-void bl_ops_irq_disable(int n) { uart0_hw_puts("[s:irq_dis]"); }
+void bl_ops_irq_attach(int n, void* f, void* arg) {}
+void bl_ops_irq_enable(int n)  {}
+void bl_ops_irq_disable(int n) {}
 
 // Workqueues -- run submitted work synchronously for now. Two priority
 // levels collapse to one.
@@ -910,11 +698,7 @@ int bl_ops_workqueue_submit_lp(void* work, void* worker, void* argv, long tick)
     => bl_ops_workqueue_submit_hp(work, worker, argv, tick);
 
 
-// ====================================================================
-// The table itself. Layout-matched; do not reorder.
-// ====================================================================
-
-@fast_data __gshared bl_ops_funcs_t g_bl_ops_funcs = {
+@section(".sram_data.wifi") __gshared bl_ops_funcs_t g_bl_ops_funcs = {
     _version:                BL_OS_ADAPTER_VERSION,
     _printf:                 &bl_ops_printf,
     _puts:                   &bl_ops_puts,

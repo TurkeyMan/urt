@@ -246,6 +246,10 @@ static void ow_wifi_event_handler(void *arg, esp_event_base_t base, int32_t even
 {
     if (base == WIFI_EVENT)
     {
+        int data_len = 0;
+        if (event_id == WIFI_EVENT_STA_DISCONNECTED && event_data)
+            data_len = ((wifi_event_sta_disconnected_t *)event_data)->reason;
+
         switch (event_id)
         {
         case WIFI_EVENT_STA_CONNECTED:
@@ -253,7 +257,7 @@ static void ow_wifi_event_handler(void *arg, esp_event_base_t base, int32_t even
         case WIFI_EVENT_STA_START:
         case WIFI_EVENT_STA_STOP:
             if (ow_wifi_sta_cb)
-                ow_wifi_sta_cb(event_id, event_data, 0);
+                ow_wifi_sta_cb(event_id, event_data, data_len);
             break;
 
         case WIFI_EVENT_AP_START:
@@ -374,6 +378,17 @@ int ow_wifi_ap_config(const char *ssid, const char *password, uint8_t channel, u
     return esp_wifi_set_config(WIFI_IF_AP, &cfg) == ESP_OK ? 1 : 0;
 }
 
+int ow_wifi_ap_set_max_clients(uint8_t max_conn)
+{
+    wifi_config_t cfg = {0};
+
+    if (esp_wifi_get_config(WIFI_IF_AP, &cfg) != ESP_OK)
+        return 0;
+
+    cfg.ap.max_connection = max_conn > 0 ? max_conn : 4;
+    return esp_wifi_set_config(WIFI_IF_AP, &cfg) == ESP_OK ? 1 : 0;
+}
+
 // Ethernet frame RX callbacks -- one per netif (STA=0, AP=1).
 // esp_wifi_internal_reg_rxcb gives us raw Ethernet frames before lwIP,
 // so the bridge/routing layer sees all traffic.
@@ -430,18 +445,78 @@ void ow_wifi_set_ap_callback(ow_wifi_event_cb_t cb)
 {
     ow_wifi_ap_cb = cb;
 }
+
+// Promiscuous (monitor) mode wrappers. ESP-IDF's promiscuous mode coexists
+// with STA/AP -- the radio's channel is what they all share. The callback
+// fires for every 802.11 frame the radio decodes, including frames with
+// FCS errors when the FCSFAIL filter bit is set.
+
+typedef void (*ow_wifi_promisc_cb_t)(int type, int rssi, int channel,
+                                     int rate, int fcs_fail, int len,
+                                     const uint8_t *payload);
+
+static ow_wifi_promisc_cb_t ow_wifi_promisc_callback;
+
+static void ow_wifi_promisc_trampoline(void *buf, wifi_promiscuous_pkt_type_t type)
+{
+    if (!ow_wifi_promisc_callback || !buf)
+        return;
+    const wifi_promiscuous_pkt_t *pkt = (const wifi_promiscuous_pkt_t *)buf;
+    const wifi_pkt_rx_ctrl_t *rx = &pkt->rx_ctrl;
+    ow_wifi_promisc_callback((int)type, (int)rx->rssi, (int)rx->channel,
+                             (int)rx->rate, (int)rx->rx_state, (int)rx->sig_len,
+                             pkt->payload);
+}
+
+void ow_wifi_set_promiscuous_callback(ow_wifi_promisc_cb_t cb)
+{
+    ow_wifi_promisc_callback = cb;
+    esp_wifi_set_promiscuous_rx_cb(cb ? &ow_wifi_promisc_trampoline : NULL);
+}
+
+int ow_wifi_set_promiscuous(int enable, uint32_t filter_mask)
+{
+    if (enable)
+    {
+        wifi_promiscuous_filter_t filt = { .filter_mask = filter_mask };
+        esp_wifi_set_promiscuous_filter(&filt);
+    }
+    return esp_wifi_set_promiscuous(enable ? true : false) == ESP_OK ? 1 : 0;
+}
+
+int ow_wifi_set_channel(int primary, int secondary)
+{
+    return esp_wifi_set_channel((uint8_t)primary,
+                                (wifi_second_chan_t)secondary) == ESP_OK ? 1 : 0;
+}
+
+// Inject a raw 802.11 frame. ifx selects WIFI_IF_STA (0) or WIFI_IF_AP (1).
+// en_sys_seq=true lets the MAC fill the sequence number; the caller can
+// still set destination/source MACs and frame control. Used by monitor-mode
+// injection paths.
+int ow_wifi_raw_tx(int ifx, const uint8_t *frame, int len, int en_sys_seq)
+{
+    return esp_wifi_80211_tx((wifi_interface_t)ifx, frame, len,
+                             en_sys_seq ? true : false) == ESP_OK ? 1 : 0;
+}
 #else // !CONFIG_ESP_WIFI_ENABLED
 
 typedef void (*ow_wifi_event_cb_t)(int, void *, int);
 typedef void (*ow_wifi_rx_cb_t)(const uint8_t *, int, int);
+typedef void (*ow_wifi_promisc_cb_t)(int, int, int, int, int, int, const uint8_t *);
 
 int ow_wifi_init(void) { return -1; }
 void ow_wifi_deinit(void) {}
 int ow_wifi_sta_config(const char *s, const char *p, const uint8_t *b) { (void)s;(void)p;(void)b; return 0; }
 int ow_wifi_ap_config(const char *s, const char *p, uint8_t c, uint8_t m, uint8_t h) { (void)s;(void)p;(void)c;(void)m;(void)h; return 0; }
+int ow_wifi_ap_set_max_clients(uint8_t m) { (void)m; return 0; }
 int ow_wifi_set_rx_callback(ow_wifi_rx_cb_t cb) { (void)cb; return 0; }
 void ow_wifi_set_sta_callback(ow_wifi_event_cb_t cb) { (void)cb; }
 void ow_wifi_set_ap_callback(ow_wifi_event_cb_t cb) { (void)cb; }
+int ow_wifi_set_promiscuous(int enable, uint32_t filter_mask) { (void)enable;(void)filter_mask; return 0; }
+void ow_wifi_set_promiscuous_callback(ow_wifi_promisc_cb_t cb) { (void)cb; }
+int ow_wifi_set_channel(int p, int s) { (void)p;(void)s; return 0; }
+int ow_wifi_raw_tx(int ifx, const uint8_t *frame, int len, int en) { (void)ifx;(void)frame;(void)len;(void)en; return 0; }
 
 #endif // CONFIG_ESP_WIFI_ENABLED
 

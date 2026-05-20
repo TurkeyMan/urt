@@ -33,7 +33,7 @@ struct portMUX_TYPE
     uint count;
 }
 
-alias TaskFunction_t = void function(void*) nothrow @nogc;
+alias TaskFunction_t = extern(C) void function(void*) nothrow @nogc;
 
 enum eNotifyAction : int
 {
@@ -65,8 +65,7 @@ extern(C)
     BaseType_t    xQueueGenericSend(QueueHandle_t xQueue, const(void)* pvItemToQueue, TickType_t xTicksToWait, BaseType_t xCopyPosition);
     void          vQueueDelete(QueueHandle_t xQueue);
 
-    // tasks (tasks.c)
-    BaseType_t   xTaskCreate(TaskFunction_t pxTaskCode, const(char)* pcName, uint usStackDepth, void* pvParameters, UBaseType_t uxPriority, TaskHandle_t* pxCreatedTask);
+    BaseType_t   xTaskCreatePinnedToCore(TaskFunction_t pxTaskCode, const(char)* pcName, uint usStackDepth, void* pvParameters, UBaseType_t uxPriority, TaskHandle_t* pxCreatedTask, BaseType_t xCoreID);
     void         vTaskDelete(TaskHandle_t xTaskToDelete);
     TaskHandle_t xTaskGetCurrentTaskHandle();
     UBaseType_t  uxTaskPriorityGet(TaskHandle_t xTask);
@@ -86,7 +85,7 @@ extern(C)
     void               vEventGroupDelete(EventGroupHandle_t xEventGroup);
     EventBits_t        xEventGroupSetBits(EventGroupHandle_t xEventGroup, EventBits_t uxBitsToSet);
     EventBits_t        xEventGroupClearBits(EventGroupHandle_t xEventGroup, EventBits_t uxBitsToClear);
-    EventBits_t        xEventGroupGetBits(EventGroupHandle_t xEventGroup);
+    EventBits_t        xEventGroupGetBitsFromISR(EventGroupHandle_t xEventGroup);
     EventBits_t        xEventGroupWaitBits(EventGroupHandle_t xEventGroup, EventBits_t uxBitsToWaitFor, BaseType_t xClearOnExit, BaseType_t xWaitForAllBits, TickType_t xTicksToWait);
 }
 
@@ -97,3 +96,13 @@ BaseType_t xTaskNotifyGive(TaskHandle_t task)
 pragma(inline, true)
 uint ulTaskNotifyTake(BaseType_t clear_on_exit, TickType_t ticks)
     => ulTaskGenericNotifyTake(tskDEFAULT_INDEX_TO_NOTIFY, clear_on_exit, ticks);
+
+enum BaseType_t tskNO_AFFINITY = -1;
+
+pragma(inline, true)
+BaseType_t xTaskCreate(TaskFunction_t code, const(char)* name, uint stack_depth, void* params, UBaseType_t priority, TaskHandle_t* task)
+    => xTaskCreatePinnedToCore(code, name, stack_depth, params, priority, task, tskNO_AFFINITY);
+
+pragma(inline, true)
+EventBits_t xEventGroupGetBits(EventGroupHandle_t group)
+    => xEventGroupGetBitsFromISR(group);

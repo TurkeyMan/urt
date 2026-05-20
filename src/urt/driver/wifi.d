@@ -12,6 +12,18 @@ else
 nothrow @nogc:
 
 
+static if (!__traits(compiles, wifi_max_ap_clients))
+    enum ubyte wifi_max_ap_clients = ubyte.max;
+
+alias WifiWakeCallback = void function() nothrow @nogc;
+
+void wifi_set_wake_callback(WifiWakeCallback cb)
+{
+    static if (__traits(compiles, wifi_hw_set_wake_callback(cb)))
+        wifi_hw_set_wake_callback(cb);
+}
+
+
 // ====================================================================
 // Types
 // ====================================================================
@@ -254,6 +266,14 @@ Result wifi_sta_configure(ref Wifi wifi, ref const WifiStaConfig cfg)
     }
 }
 
+const(char)[] wifi_sta_status_message(ref Wifi wifi)
+{
+    static if (num_wifi == 0)
+        return null;
+    else
+        return wifi_hw_sta_status_message(wifi.port);
+}
+
 // Begin association. Completion is signalled via WifiEvent.sta_connected
 // or WifiEvent.sta_disconnected through the event callback.
 Result wifi_sta_connect(ref Wifi wifi)
@@ -289,6 +309,18 @@ Result wifi_ap_configure(ref Wifi wifi, ref const WifiApConfig cfg)
     else
     {
         if (!wifi_hw_ap_configure(wifi.port, cfg))
+            return InternalResult.failed;
+        return Result.success;
+    }
+}
+
+Result wifi_ap_set_max_clients(ref Wifi wifi, ubyte max_clients)
+{
+    static if (num_wifi == 0)
+        assert(false, "no WiFi on this platform");
+    else
+    {
+        if (!wifi_hw_ap_set_max_clients(wifi.port, max_clients))
             return InternalResult.failed;
         return Result.success;
     }
@@ -393,6 +425,18 @@ Result wifi_get_mac(ref Wifi wifi, WifiVif vif, ref ubyte[6] mac)
     else
     {
         if (!wifi_hw_get_mac(wifi.port, vif, mac))
+            return InternalResult.failed;
+        return Result.success;
+    }
+}
+
+Result wifi_set_channel(ref Wifi wifi, ubyte channel)
+{
+    static if (num_wifi == 0)
+        assert(false, "no WiFi on this platform");
+    else
+    {
+        if (!wifi_hw_set_channel(wifi.port, channel))
             return InternalResult.failed;
         return Result.success;
     }

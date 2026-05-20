@@ -1,4 +1,4 @@
-// BL808 M0 chip bring-up and D0 launch
+// BL808 M0 chip init and D0 launch
 //
 // m0_bringup() runs from start.S before sys_init: chip-wide power, clocks,
 // PSRAM, L2 partition, TZC, then D0 launch. D0's own start.S spins ~80ms
@@ -9,7 +9,7 @@ module urt.driver.bl808_m0.start;
 
 import core.volatile;
 import urt.zip : gzip_uncompress;
-import urt.driver.bl618.uart : uart0_early_init, uart0_putc, uart0_hw_puts;
+import urt.driver.bl618.uart : uart0_early_init, uart0_hw_puts;
 
 @nogc nothrow:
 
@@ -19,23 +19,19 @@ private enum uint M0_CONSOLE_TX_PIN = 14;
 private enum uint M0_CONSOLE_RX_PIN = 15;
 private enum uint M0_CONSOLE_BAUD   = 2_000_000;
 
-// HACK: single-byte progress markers so a hang/fault in early bring-up tells
-// us which step we died on. Remove once the bring-up is stable.
-//
-// Power and clocks must run before UART can talk; once it is up, mark every
-// remaining step.
 extern(C) void m0_bringup()
 {
     mm_domain_power_on();
     mm_clk_config();
+    mcu2ext_bus_threshold();
     uart_signal_mux();
     uart0_early_init(M0_CONSOLE_TX_PIN, M0_CONSOLE_RX_PIN, M0_CONSOLE_BAUD);
-    uart0_hw_puts("\nM0:A");
-    psram_init();           uart0_putc('B');
-    l2_sram_partition();    uart0_putc('C');
-    tzc_config_for_d0();    uart0_putc('D');
-    launch_d0();            uart0_putc('E');
-    uart0_hw_puts(":bringup-done\n");
+    uart0_hw_puts("\nBL808 M0: startup\n");
+    wifi_em_carveout();
+    psram_init();
+    l2_sram_partition();
+    tzc_config_for_d0();
+    launch_d0();
 }
 
 private void launch_d0()
@@ -51,6 +47,7 @@ private:
 
 enum uint PDS_CTL2              = 0x2000_E010;
 enum uint MM_CLK_CTRL_CPU       = 0x3000_7000;
+enum uint MCU_MISC_MCU_BUS_CFG1 = 0x2000_9004;
 enum uint GLB_PARM_CFG0         = 0x2000_0510;
 enum uint MM_MISC_VRAM_CTRL     = 0x3000_0050;
 enum uint TZC_MM_BMX_TZMID      = 0x2000_5300;
@@ -62,7 +59,7 @@ enum uint MM_GLB_SW_SYS_RESET   = 0x3000_7040;
 enum uint MM_MISC_CPU_RTC       = 0x3000_0018;
 
 enum uint D0_IMAGE_FLASH_ADDR   = 0x5821_0000;   // D0FW partition base (XIP-mapped)
-enum uint D0_IMAGE_FLASH_SIZE   = 0x0040_0000;   // partition size; TODO: read from PT at runtime
+enum uint D0_IMAGE_FLASH_SIZE   = 0x0040_0000;   // D0FW partition size
 enum uint D0_PSRAM_LOAD_ADDR    = 0x5010_0000;
 enum uint D0_PSRAM_LOAD_SIZE    = 0x0040_0000;   // D0 CODE region in d0 linker script
 
@@ -106,6 +103,37 @@ pragma(inline, false) extern(C) void arch_delay_us(uint us)
         asm @nogc nothrow { "rdtime %0" : "=r" (now); }
     }
     while ((now - start) < us);
+}
+
+// Carve 64KB of WRAM as WiFi MAC "Embedded Memory" (EM). Vendor's libwifi.a
+// was built expecting this split when BLE is compiled in, and at least one
+// community Sipeed-fork SDK confirms WiFi-AP fails silently without it --
+// beacons get queued into a buffer the RF DMA never reads. EM is LMAC's
+// private DMA region; the CPU never touches it, so this does not collide
+// with our linker layout. Done in m0_bringup before any other init so the
+// SRAM controller settles before stack-heavy code runs.
+//
+// GLB_SRAM_CFG3 @ GLB_BASE + 0x60C, field GLB_EM_SEL [7:0]:
+//   0x00 -> 160K WRAM + 0K EM (reset default; what crashed earlier was
+//           NOT this; see below)
+//   0xFF -> 96K WRAM + 64K EM (vendor wifi+ble default)
+//
+// Previously failed when written from chip_post_init -- by that point the
+// stack is live and writing the register while CPU is mid-routine appears
+// to glitch SRAM. Running here from m0_bringup, with only the early start.S
+// stack in DTCM aliasing, is the same place vendor calls equivalent code
+// from System_Init.
+void wifi_em_carveout()
+{
+    enum uint GLB_SRAM_CFG3 = 0x2000_060C;
+    mmio_set_field(GLB_SRAM_CFG3, 0, 0xFF, 0xFF);
+}
+
+void mcu2ext_bus_threshold()
+{
+    // Vendor bl_sys_reduce_mcu2ext(): MCU_MISC.MCU_BUS_CFG1
+    // REG_X_WTHRE_MCU2EXT = 3.
+    mmio_set_field(MCU_MISC_MCU_BUS_CFG1, 7, 0x3, 3);
 }
 
 void mm_domain_power_on()

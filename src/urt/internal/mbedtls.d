@@ -82,6 +82,16 @@ int urt_gcm_decrypt(const(ubyte)* key, size_t key_len,
                     ubyte* plaintext);
 
 
+// --- AES single-block ECB (RFC 3394 key-wrap building blocks) ---
+
+int urt_aes_ecb_decrypt(const(ubyte)* key, size_t key_len,
+                        const(ubyte)* cipher_block,
+                        ubyte* plain_block);
+int urt_aes_ecb_encrypt(const(ubyte)* key, size_t key_len,
+                        const(ubyte)* plain_block,
+                        ubyte* cipher_block);
+
+
 // --- X.509 certificate ---
 
 // mbedtls_x509_crt is complex (~200+ bytes). We only use it through pointers

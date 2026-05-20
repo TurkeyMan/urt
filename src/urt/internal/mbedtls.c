@@ -18,6 +18,7 @@
 #include <mbedtls/private/ecp.h>
 #include <mbedtls/private/gcm.h>
 #include <mbedtls/private/ecdh.h>
+#include <mbedtls/private/aes.h>
 #else
 #include <mbedtls/entropy.h>
 #include <mbedtls/ctr_drbg.h>
@@ -25,6 +26,7 @@
 #include <mbedtls/ecp.h>
 #include <mbedtls/gcm.h>
 #include <mbedtls/ecdh.h>
+#include <mbedtls/aes.h>
 #endif
 #include <mbedtls/pk.h>
 #include <mbedtls/x509_crt.h>
@@ -384,6 +386,38 @@ int urt_gcm_decrypt(const unsigned char *key, size_t key_len,
         ret = mbedtls_gcm_auth_decrypt(&ctx, ct_len, iv, iv_len, aad, aad_len,
                                        tag, tag_len, ciphertext, plaintext);
     mbedtls_gcm_free(&ctx);
+    return ret;
+}
+
+
+// =====================================================================
+// AES ECB single-block primitives (used by RFC 3394 key-wrap for the
+// WPA2 4-way handshake GTK decryption).
+// =====================================================================
+
+int urt_aes_ecb_decrypt(const unsigned char *key, size_t key_len,
+                        const unsigned char *cipher_block,
+                        unsigned char *plain_block)
+{
+    mbedtls_aes_context ctx;
+    mbedtls_aes_init(&ctx);
+    int ret = mbedtls_aes_setkey_dec(&ctx, key, (unsigned)(key_len * 8));
+    if (ret == 0)
+        ret = mbedtls_aes_crypt_ecb(&ctx, MBEDTLS_AES_DECRYPT, cipher_block, plain_block);
+    mbedtls_aes_free(&ctx);
+    return ret;
+}
+
+int urt_aes_ecb_encrypt(const unsigned char *key, size_t key_len,
+                        const unsigned char *plain_block,
+                        unsigned char *cipher_block)
+{
+    mbedtls_aes_context ctx;
+    mbedtls_aes_init(&ctx);
+    int ret = mbedtls_aes_setkey_enc(&ctx, key, (unsigned)(key_len * 8));
+    if (ret == 0)
+        ret = mbedtls_aes_crypt_ecb(&ctx, MBEDTLS_AES_ENCRYPT, plain_block, cipher_block);
+    mbedtls_aes_free(&ctx);
     return ret;
 }
 

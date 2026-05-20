@@ -43,11 +43,23 @@ extern(C) void sys_init()
     // point any irq_line_enable will actually deliver.
     irq_global_enable();
 
-    // 50Hz tick for the diagnostic build -- if the hang is temporal at
-    // the timer fire rate, halving the period should move it earlier.
     timer_set_periodic(50_000, &tick_stub);
 
     uart0_hw_puts(chip_name ~ ": ready\n");
+}
+
+
+version (BL808_M0)
+{
+    extern(C) __gshared uint __irq_sample_mepc;
+    extern(C) __gshared uint __irq_sample_mcause;
+    extern(C) __gshared uint __irq_sample_sp;
+
+    extern(C) void ow_hang_watchdog_feed()
+    {
+        _wd_last_feed_us = mtime_read();
+        ++_wd_feed_count;
+    }
 }
 
 
@@ -55,7 +67,47 @@ private:
 
 void tick_stub() @nogc nothrow
 {
-    // TODO: drive urt.time / Application frame tick
+    version (BL808_M0)
+        hang_watchdog_tick();
+}
+
+version (BL808_M0)
+{
+    __gshared ulong _wd_last_feed_us;
+    __gshared ulong _wd_next_report_us;
+    __gshared uint  _wd_feed_count;
+    __gshared uint  _wd_report_count;
+
+    void hang_watchdog_tick()
+    {
+        ulong now = mtime_read();
+        if (_wd_last_feed_us == 0)
+        {
+            _wd_last_feed_us = now;
+            _wd_next_report_us = now + 1_500_000;
+            return;
+        }
+
+        if (now - _wd_last_feed_us < 1_500_000)
+            return;
+        if (now < _wd_next_report_us)
+            return;
+
+        _wd_next_report_us = now + 1_000_000;
+        ++_wd_report_count;
+
+        uart0_print("\n[wd hung feed=");
+        uart0_hex(_wd_feed_count);
+        uart0_print(" rpt=");
+        uart0_hex(_wd_report_count);
+        uart0_print(" mepc=");
+        uart0_hex(__irq_sample_mepc);
+        uart0_print(" mcause=");
+        uart0_hex(__irq_sample_mcause);
+        uart0_print(" sp=");
+        uart0_hex(__irq_sample_sp);
+        uart0_print("]\n");
+    }
 }
 
 // Chip-specific bring-up that doesn't belong in the shared sequence.

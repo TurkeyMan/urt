@@ -1,6 +1,6 @@
 /* BL808 M0 (T-Head E907 RV32IMAFC) startup
  *
- * System bring-up core -- runs first out of reset on the M0 side of
+ * System init core -- runs first out of reset on the M0 side of
  * the BL808 dual-core SoC.  Hands off to m0_bringup (D-side, start.d)
  * before sys_init so HBN/PDS/clock/PLL setup and any D0/LP handshake
  * happens before D module ctors run.
@@ -29,10 +29,9 @@
 #define CSR_MHINT    0x7C5
 #define CSR_MTVT     0x307
 
-/* Early-boot UART markers. Bouffalo Boot2 is mute (doesn't print, doesn't
- * leave UART0 set up). To get any visible output during start.S we have to
- * bring UART0 up ourselves before the first marker. The init block below
- * does this with pure MMIO writes -- no stack, no .got, no .bss needed.
+/* Early-boot UART setup. Bouffalo Boot2 is mute (doesn't print, doesn't
+ * leave UART0 set up). The init block below uses pure MMIO writes -- no stack,
+ * no .got, no .bss needed -- so m0_bringup can emit the first readable line.
  *
  * M1s Dock: UART0 -> BL702 USB-CDC bridge on GPIO22 (TX) / GPIO21 (RX).
  * 2 Mbaud from MCU PBCLK = XTAL = 40 MHz at cold-boot (no PLL yet).
@@ -41,19 +40,13 @@
  * UART0 base 0x2000_A000, FIFO_WDATA offset 0x88 -> 0x2000_A088. */
 #define UART0_FIFO_WDATA 0x2000A088
 
-.macro EMIT_MARKER c
-    li      t0, UART0_FIFO_WDATA
-    li      t1, \c
-    sw      t1, 0(t0)
-.endm
-
     .section .text.entry, "ax"
     .global _start
     .type   _start, @function
     .align 2
 
 _start:
-    /* -- 0. UART0 bring-up so markers transmit ------------------- */
+    /* -- 0. UART0 setup so markers transmit ---------------------- */
     /* Discovered via config matrix: at M0 cold-boot, MCU_PBCLK is at some
      * unknown PLL-derived frequency (Boot2 left it that way). XCLK however
      * is deterministically 40 MHz from XTAL, and the 160 MHz PLL is up. We
@@ -117,8 +110,6 @@ _start:
     li      t1, 0x00000F05
     sw      t1, 0(t0)
 
-    EMIT_MARKER '0'             /* reached entry point + UART alive */
-
     /* -- 1. CPU setup ---------------------------------------------- */
 
     /* Disable interrupts */
@@ -151,8 +142,6 @@ _start:
     and     t1, t1, t2
     sw      t1, 0(t0)
 
-    EMIT_MARKER '1'             /* CSR setup + HBN/PDS retention clear done */
-
     /* mtvec in CLIC mode (bits[1:0]=11). base = sync-trap handler only;
      * IRQs are dispatched via mtvt[id] entries, never through mtvec.base. */
     la      t0, _trap_exception
@@ -164,8 +153,6 @@ _start:
     la      t0, __clic_vectors
     csrw    CSR_MTVT, t0
 
-    EMIT_MARKER '2'             /* trap vectors set */
-
     /* -- 2. Core registers ----------------------------------------- */
 
     .option push
@@ -174,8 +161,6 @@ _start:
     .option pop
     la      tp, _tdata_start
     la      sp, _stack_top
-
-    EMIT_MARKER '3'             /* gp/tp/sp loaded */
 
     /* -- 3. Section init ------------------------------------------- */
 
@@ -205,6 +190,20 @@ _start:
     addi    a1, a1, 4
     bltu    a0, a2, .Lgot_copy
 .Lgot_done:
+
+    /* Copy .sram_data_tail from flash (LMA) to WIFIRAM (VMA) -- WiFi-side
+     * @fast_data packed into the slack after the vendor .wifibss window. */
+    la      a0, _sram_data_tail_start
+    la      a1, _sram_data_tail_load
+    la      a2, _sram_data_tail_end
+    bgeu    a0, a2, .Lsram_data_tail_done
+.Lsram_data_tail_copy:
+    lw      t0, 0(a1)
+    sw      t0, 0(a0)
+    addi    a0, a0, 4
+    addi    a1, a1, 4
+    bltu    a0, a2, .Lsram_data_tail_copy
+.Lsram_data_tail_done:
 
     /* Copy .sram_data from flash (LMA) to OCRAM (VMA) -- @fast_data globals.
      * Empty when no @fast_data is in use; loop is a no-op. */
@@ -266,11 +265,21 @@ _start:
     bltu    a0, a2, .Lbss_zero
 .Lbss_done:
 
-    EMIT_MARKER '4'             /* all section init done (.got/.tdata/.data copied, .tbss/.bss zeroed) */
+    /* Zero .wifibss -- vendor WiFi shared/LMAC state. This section is
+     * NOLOAD in the linker script, but the SDK still clears it explicitly
+     * during start_load before wifi_main touches COMMON state. */
+    la      a0, __wifi_bss_start
+    la      a2, __wifi_bss_end
+    bgeu    a0, a2, .Lwifi_bss_done
+.Lwifi_bss_zero:
+    sw      zero, 0(a0)
+    addi    a0, a0, 4
+    bltu    a0, a2, .Lwifi_bss_zero
+.Lwifi_bss_done:
 
     /* -- 4. Caches ------------------------------------------------- */
 
-    /* TODO: D-cache and branch prediction are intentionally OFF -- we set
+    /* D-cache and branch prediction are intentionally OFF -- we set
      * only IE (bit 0). Vendor's csi_dcache_enable writes MHCR=0x103F
      * (DE | WB | WA | RS | BPE | L0BTB), and MHINT=0x0C for D$ prefetch +
      * write-buffer auto-merge.
@@ -289,22 +298,16 @@ _start:
     li      t0, (1 << 0)        /* IE: I-cache enable */
     csrs    CSR_MHCR, t0
 
-    EMIT_MARKER '5'             /* I-cache enabled */
-
     /* -- 5. Interrupts --------------------------------------------- */
-    /* IRQ controller bring-up + mstatus.MIE enable are owned by sys_init
+    /* IRQ controller setup + mstatus.MIE enable are owned by sys_init
      * (bl_common/system.d), which calls irq_init() then irq_global_enable()
      * once every subsystem is in a known state. MIE stays off through
-     * m0_bringup -- chip bring-up is pure MMIO and doesn't need IRQs. */
-
-    EMIT_MARKER '6'             /* about to call m0_bringup */
+     * m0_bringup -- chip init is pure MMIO and doesn't need IRQs. */
 
     /* -- 6. D runtime ---------------------------------------------- */
 
-    /* M0 bring-up: HBN/PDS/clock/PLL setup, D0/LP handshake (D-side) */
+    /* M0 init: HBN/PDS/clock/PLL setup, D0/LP handshake (D-side) */
     call    m0_bringup
-
-    EMIT_MARKER '7'             /* m0_bringup returned */
 
     call    sys_init
 
@@ -321,7 +324,7 @@ _start:
 
     /* Enter main -- urt/package.d's extern(C) main(int argc, char** argv).
      * argc=0/argv=null so the D-side _Dmain sees an empty args slice.
-     * Zero fp so backtraces terminate cleanly at main; zero ra so a return
+     * Zero fp so stack walks terminate cleanly at main; zero ra so a return
      * from main traps (caught by _crash_handler). */
     li      a0, 0
     li      a1, 0
@@ -373,6 +376,15 @@ __clic_vectors:
     .option arch, +xtheadint
 _clic_dispatch:
     th.ipush
+    csrr    t0, mepc
+    la      t1, __irq_sample_mepc
+    sw      t0, 0(t1)
+    csrr    t0, mcause
+    la      t1, __irq_sample_mcause
+    sw      t0, 0(t1)
+    mv      t0, sp
+    la      t1, __irq_sample_sp
+    sw      t0, 0(t1)
     csrci   mstatus, 0x8
     csrr    a0, mcause
     andi    a0, a0, 0x3FF
@@ -446,4 +458,3 @@ _trap_exception:
 .Lcrash_spin2:
     wfi
     j       .Lcrash_spin2
-
