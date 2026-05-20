@@ -6,10 +6,12 @@ nothrow @nogc:
 
 enum bool has_plic = true;
 enum bool has_nvic = false;
+enum bool has_clic = false;
 enum bool has_per_irq_control = true;
 enum bool has_irq_priority = false;
 enum bool has_wait_for_interrupt = true;
 enum bool has_irq_diagnostics = true;
+enum bool has_global_irq_state = true;
 enum bool has_smp = false;
 
 
@@ -119,6 +121,13 @@ public:
 // Diagnostic counters (temporary)
 __gshared uint irq_count = 0;
 __gshared uint[irq_max] irq_histogram;
+
+// PLIC bring-up. C906/D0 boots with the PLIC already in a usable state from
+// the boot ROM, so for now this is a stub that satisfies the sys_init
+// contract. When we start exposing per-IRQ priorities we'll move that setup
+// here (cleared priorities, enable mask zeroed) -- mirrors the CLIC's
+// irq_init in bl618/irq.d.
+extern(C) void irq_init() {}
 
 package:
 

@@ -28,12 +28,8 @@
 // value. The peripheral owns I/O direction once muxed.
 module urt.driver.gpio;
 
-version (BL808_M0)
-    public import urt.driver.bl618.gpio;
-else version (BL808)
-    public import urt.driver.bl808.gpio;
-else version (BL618)
-    public import urt.driver.bl618.gpio;
+version (Bouffalo)
+    public import urt.driver.bl_common.gpio;
 else version (Beken)
     public import urt.driver.bk7231.gpio;
 else version (Espressif)

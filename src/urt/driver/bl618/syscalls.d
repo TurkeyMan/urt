@@ -44,3 +44,13 @@ extern(C) int _isatty(int) { return 1; }
 extern(C) void _exit(int) { while (true) {} }
 extern(C) int _kill(int, int) { return -1; }
 extern(C) int _getpid() { return 1; }
+
+// Picolibc's time() routes through gettimeofday(). Stubbed to "epoch"
+// here -- callers that need wall-clock time should use the RTC/HBN path.
+extern(C) int gettimeofday(void* tv, void* tz) { return 0; }
+
+// printf override: drop content. Wifi blob pulls printf transitively;
+// routing through libc would drag stdout/vfprintf. We tried dumping the
+// fmt string verbatim once -- mbedtls is a printf caller and its trace
+// volume blocked the ecdh test. Silent return is what works.
+extern(C) int printf(const(char)*, ...) { return 0; }

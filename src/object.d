@@ -8,9 +8,9 @@ static assert(__VERSION__ >= 2112,
     "uRT requires DMD frontend 2.112+ (DMD ≥2.112, LDC ≥1.42). " ~
     "Older frontends use TypeInfo-based AA hooks incompatible with uRT's template-based AAs.");
 
-// ──────────────────────────────────────────────────────────────────────
+// ----------------------------------------------------------------------
 // Platform-dependent ABI flags (must match druntime's detection)
-// ──────────────────────────────────────────────────────────────────────
+// ----------------------------------------------------------------------
 
 version (X86_64)
 {
@@ -27,9 +27,9 @@ else version (AArch64)
     else version = WithArgTypes;
 }
 
-// ──────────────────────────────────────────────────────────────────────
+// ----------------------------------------------------------------------
 // Fundamental type aliases (compiler hardcodes references to these)
-// ──────────────────────────────────────────────────────────────────────
+// ----------------------------------------------------------------------
 
 alias size_t = typeof(int.sizeof);
 alias ptrdiff_t = typeof(cast(void*)0 - cast(void*)0);
@@ -70,9 +70,9 @@ template imported(string name)
     mixin("import imported = " ~ name ~ ";");
 }
 
-// ──────────────────────────────────────────────────────────────────────
+// ----------------------------------------------------------------------
 // Primitive tools
-// ──────────────────────────────────────────────────────────────────────
+// ----------------------------------------------------------------------
 
 // TODO: move the functions here so object doesn't import these modules...
 public import urt.lifetime : move, forward;
@@ -109,9 +109,9 @@ public import urt.util : min, max, swap;
 //    return t.move;
 //}
 
-// ──────────────────────────────────────────────────────────────────────
+// ----------------------------------------------------------------------
 // ^^ helpers
-// ──────────────────────────────────────────────────────────────────────
+// ----------------------------------------------------------------------
 
 static if (__VERSION__ >= 2113)
 {
@@ -128,9 +128,9 @@ static if (__VERSION__ >= 2113)
     }
 }
 
-// ──────────────────────────────────────────────────────────────────────
+// ----------------------------------------------------------------------
 // Object - root of the class hierarchy
-// ──────────────────────────────────────────────────────────────────────
+// ----------------------------------------------------------------------
 
 class Object
 {
@@ -176,9 +176,9 @@ bool opEquals(LHS, RHS)(LHS lhs, RHS rhs)
         return .opEquals!(Object, Object)(*cast(Object*) &lhs, *cast(Object*) &rhs);
 }
 
-// ──────────────────────────────────────────────────────────────────────
+// ----------------------------------------------------------------------
 // TypeInfo - compiler generates references for typeid, AAs, etc.
-// ──────────────────────────────────────────────────────────────────────
+// ----------------------------------------------------------------------
 
 class TypeInfo
 {
@@ -617,13 +617,13 @@ class TypeInfo_Inout : TypeInfo_Const
 {
 }
 
-// ──────────────────────────────────────────────────────────────────────
+// ----------------------------------------------------------------------
 // TypeInfo for built-in types - compiler references these by mangled name
 // (e.g. TypeInfo_k for uint).  Single-character suffixes follow D's type
 // encoding: a=char, b=bool, d=double, f=float, g=byte, h=ubyte,
 // i=int, k=uint, l=long, m=ulong, o=dchar, s=short, t=wchar,
 // u=ushort, v=void, x=const, y=immutable.
-// ──────────────────────────────────────────────────────────────────────
+// ----------------------------------------------------------------------
 
 class TypeInfo_a : TypeInfo { override @property size_t tsize() nothrow pure const @safe @nogc { return char.sizeof; } }
 class TypeInfo_b : TypeInfo { override @property size_t tsize() nothrow pure const @safe @nogc { return bool.sizeof; } }
@@ -661,9 +661,9 @@ private struct _member_func
     }
 }
 
-// ──────────────────────────────────────────────────────────────────────
+// ----------------------------------------------------------------------
 // __ArrayDtor - compiler lowers dynamic array destruction to this
-// ──────────────────────────────────────────────────────────────────────
+// ----------------------------------------------------------------------
 
 void __ArrayDtor(T)(scope T[] a)
 {
@@ -671,10 +671,10 @@ void __ArrayDtor(T)(scope T[] a)
         e.__xdtor();
 }
 
-// ──────────────────────────────────────────────────────────────────────
+// ----------------------------------------------------------------------
 // Compiler hook templates - array & AA literal lowering
 // These are only called at runtime; CTFE evaluates literals directly.
-// ──────────────────────────────────────────────────────────────────────
+// ----------------------------------------------------------------------
 
 void* _d_arrayliteralTX(T)(size_t length) @trusted pure nothrow
 {
@@ -732,10 +732,10 @@ ref Tarr _d_arrayappendT(Tarr : T[], T)(return ref scope Tarr x, scope Tarr y) @
     assert(false, "Array append requires druntime");
 }
 
-// ──────────────────────────────────────────────────────────────────────
+// ----------------------------------------------------------------------
 // Compiler hook templates - array operations, construction, etc.
 // These are lowered by the compiler for various language constructs.
-// ──────────────────────────────────────────────────────────────────────
+// ----------------------------------------------------------------------
 
 T[] _d_newarrayT(T)(size_t length, bool isShared = false) @trusted
 {
@@ -867,10 +867,10 @@ string _d_assert_fail(A...)(const scope string comp, auto ref const scope A a)
     return "assertion failure";
 }
 
-// ──────────────────────────────────────────────────────────────────────
+// ----------------------------------------------------------------------
 // Runtime hooks: assertions, array bounds checks
 // These are referenced by compiler-generated code even in debug builds.
-// ──────────────────────────────────────────────────────────────────────
+// ----------------------------------------------------------------------
 
 extern(C) void _d_assert_msg(string msg, string file, uint line) nothrow @nogc
 {
@@ -947,13 +947,13 @@ extern(C) void* _d_allocmemory(size_t sz) nothrow @nogc @trusted
     return alloc(sz).ptr;
 }
 
-// ──────────────────────────────────────────────────────────────────────
+// ----------------------------------------------------------------------
 // LDC extern(C) runtime hooks
 // LDC's codegen emits calls to old-style extern(C) functions for many
 // operations where DMD uses template-based hooks.  These stubs satisfy
 // the linker.  Implementations are provided where feasible; others
 // assert(false) and must be fleshed out if the code path is hit.
-// ──────────────────────────────────────────────────────────────────────
+// ----------------------------------------------------------------------
 
 version (LDC)
 {
@@ -1109,11 +1109,11 @@ template _d_delstructImpl(T)
 
 nothrow @nogc @trusted pure extern(C) void _d_delThrowable(scope Throwable) {}
 
-// ──────────────────────────────────────────────────────────────────────
+// ----------------------------------------------------------------------
 // _arrayOp - compiler hook for vectorized array slice operations.
 // DMD lowers `dest[] = a[] ^ b[]` to `_arrayOp!(T[], T[], T[], "^", "=")(dest, a, b)`.
 // Args are in Reverse Polish Notation (RPN).
-// ──────────────────────────────────────────────────────────────────────
+// ----------------------------------------------------------------------
 
 template _arrayOp(Args...)
 {
@@ -1222,9 +1222,9 @@ private enum _scalar_exp(Args...) = () {
     return stack[0];
 }();
 
-// ──────────────────────────────────────────────────────────────────────
+// ----------------------------------------------------------------------
 // _d_cast - dynamic class cast, walks TypeInfo_Class.base chain
-// ──────────────────────────────────────────────────────────────────────
+// ----------------------------------------------------------------------
 
 void* _d_cast(To, From)(From o) @trusted
     if (is(From == class) && is(To == class))
@@ -1249,9 +1249,9 @@ void* _d_cast(To, From)(From o) @trusted
     assert(false, "Interface cast not yet implemented");
 }
 
-// ──────────────────────────────────────────────────────────────────────
+// ----------------------------------------------------------------------
 // Throwable / Exception / Error - exception hierarchy
-// ──────────────────────────────────────────────────────────────────────
+// ----------------------------------------------------------------------
 
 class Throwable : Object
 {
@@ -1323,9 +1323,9 @@ class Error : Throwable
     }
 }
 
-// ──────────────────────────────────────────────────────────────────────
+// ----------------------------------------------------------------------
 // destroy - compiler generates calls for scope guards, etc.
-// ──────────────────────────────────────────────────────────────────────
+// ----------------------------------------------------------------------
 
 void destroy(bool initialize = true, T)(ref T obj) if (is(T == struct))
 {
@@ -1368,9 +1368,9 @@ void destroy(bool initialize = true, T)(ref T obj) if (!is(T == struct) && !is(T
         obj = T.init;
 }
 
-// ──────────────────────────────────────────────────────────────────────
+// ----------------------------------------------------------------------
 // .dup / .idup - array duplication properties
-// ──────────────────────────────────────────────────────────────────────
+// ----------------------------------------------------------------------
 
 @property immutable(T)[] idup(T)(T[] a) @trusted
 {
@@ -1392,9 +1392,9 @@ void destroy(bool initialize = true, T)(ref T obj) if (!is(T == struct) && !is(T
     return r;
 }
 
-// ──────────────────────────────────────────────────────────────────────
+// ----------------------------------------------------------------------
 // Compiler-generated struct equality/comparison fallbacks
-// ──────────────────────────────────────────────────────────────────────
+// ----------------------------------------------------------------------
 
 bool _xopEquals(in void*, in void*)
     => false;
@@ -1402,9 +1402,9 @@ bool _xopEquals(in void*, in void*)
 bool _xopCmp(in void*, in void*)
     => false;
 
-// ──────────────────────────────────────────────────────────────────────
+// ----------------------------------------------------------------------
 // hashOf - used by AAs and anywhere .toHash is needed
-// ──────────────────────────────────────────────────────────────────────
+// ----------------------------------------------------------------------
 
 size_t hashOf(T)(auto ref T val, size_t seed = 0) pure nothrow @nogc @trusted
 {
@@ -1492,10 +1492,10 @@ private size_t _fnv(size_t val, size_t seed) pure nothrow @nogc @trusted
         return fnv1a64((cast(ubyte*)&val)[0..8], seed ? seed : fnv1_initial!ulong);
 }
 
-// ──────────────────────────────────────────────────────────────────────
+// ----------------------------------------------------------------------
 // ModuleInfo - compiler emits one per module with ctor/dtor/unittest info.
 // Variable-sized: fields are packed after the header based on flag bits.
-// ──────────────────────────────────────────────────────────────────────
+// ----------------------------------------------------------------------
 
 enum
 {
@@ -1628,13 +1628,13 @@ const:
     }
 }
 
-// ──────────────────────────────────────────────────────────────────────
+// ----------------------------------------------------------------------
 // Module registration - LDC uses _Dmodule_ref linked list
 //
 // On ELF targets the compiler generates .init_array entries that chain
 // ModuleReference structs into _Dmodule_ref. On Linux, glibc's crt0
 // calls .init_array automatically. On bare-metal, start.S does it.
-// ──────────────────────────────────────────────────────────────────────
+// ----------------------------------------------------------------------
 
 version (Windows) {}
 else
@@ -1672,16 +1672,16 @@ version (linux)
     }
 }
 
-// ──────────────────────────────────────────────────────────────────────
+// ----------------------------------------------------------------------
 // TypeInfo for const/immutable char[] - compiler references by name
-// ──────────────────────────────────────────────────────────────────────
+// ----------------------------------------------------------------------
 
 class TypeInfo_Axa : TypeInfo_Array {}  // const(char)[]
 class TypeInfo_Aya : TypeInfo_Array {}  // immutable(char)[] = string
 
-// ──────────────────────────────────────────────────────────────────────
+// ----------------------------------------------------------------------
 // _d_invariant - contract invariant hook (matches rt.invariant_ mangling)
-// ──────────────────────────────────────────────────────────────────────
+// ----------------------------------------------------------------------
 
 pragma(mangle, "_D2rt10invariant_12_d_invariantFC6ObjectZv")
 void _d_invariant_impl(Object o) nothrow @nogc
@@ -1697,9 +1697,9 @@ void _d_invariant_impl(Object o) nothrow @nogc
     while (c);
 }
 
-// ──────────────────────────────────────────────────────────────────────
+// ----------------------------------------------------------------------
 // Compiler-generated memset intrinsics (struct initialization)
-// ──────────────────────────────────────────────────────────────────────
+// ----------------------------------------------------------------------
 
 private struct Bits128 { ulong[2] v; }
 private struct Bits80  { ubyte[real.sizeof] v; }

@@ -353,11 +353,14 @@ endif
 ifneq ($(filter esp%,$(PLATFORM)),)
     USE_MBEDTLS ?= 1
 endif
+ifneq ($(filter bl808 bl618,$(PLATFORM)),)
+    USE_MBEDTLS ?= 1
+endif
 
 # mbedtls C glue: host posix builds compile it directly via URT_SOURCES.
 # Embedded targets must compile it via their platform's build system
-# (e.g. esp32 via IDF main component) so the cross-compiler picks up the
-# right mbedtls headers.
+# (e.g. esp32 via IDF main component, bouffalo via consumer Makefile) so
+# the cross-compiler picks up the right mbedtls headers.
 ifeq ($(USE_MBEDTLS),1)
 ifeq ($(filter freertos baremetal,$(OS)),)
     URT_SOURCES := $(URT_SOURCES) $(URT_SRCDIR)/urt/internal/mbedtls.c
@@ -365,15 +368,18 @@ endif
 endif
 
 ifeq ($(PLATFORM),bl808)
+  URT_SOURCES := $(URT_SOURCES) $(shell find "$(URT_SRCDIR)/urt/driver/bl_common" -type f -name '*.d')
   ifeq ($(PROCESSOR),c906)
     URT_SOURCES := $(URT_SOURCES) $(shell find "$(URT_SRCDIR)/urt/driver/bl808" -type f -name '*.d')
   else ifeq ($(PROCESSOR),e907)
-    # BL808 M0 core -- E907 uses same peripheral drivers as BL618
+    # BL808 M0 core -- E907 uses same peripheral drivers as BL618.
     URT_SOURCES := $(URT_SOURCES) $(shell find "$(URT_SRCDIR)/urt/driver/bl618" -type f -name '*.d')
+    URT_SOURCES := $(URT_SOURCES) $(shell find "$(URT_SRCDIR)/urt/driver/bl808_m0" -type f -name '*.d')
   endif
 endif
 ifeq ($(PLATFORM),bl618)
     URT_SOURCES := $(URT_SOURCES) $(shell find "$(URT_SRCDIR)/urt/driver/bl618" -type f -name '*.d')
+    URT_SOURCES := $(URT_SOURCES) $(shell find "$(URT_SRCDIR)/urt/driver/bl_common" -type f -name '*.d')
 endif
 ifeq ($(PLATFORM),rp2350)
     URT_SOURCES := $(URT_SOURCES) $(shell find "$(URT_SRCDIR)/urt/driver/rp2350" -type f -name '*.d')
@@ -634,7 +640,7 @@ ifeq ($(COMPILER),ldc)
           BAREMETAL_DIR  := $(URT_SRCDIR)/urt/driver/bl808
           BAREMETAL_SRCS := start.S hbn_ram.c
         else ifeq ($(PROCESSOR),e907)
-          BAREMETAL_DIR  := $(URT_SRCDIR)/urt/driver/bl618
+          BAREMETAL_DIR  := $(URT_SRCDIR)/urt/driver/bl808_m0
           BAREMETAL_SRCS := start.S
         endif
       else ifeq ($(PLATFORM),bl618)
@@ -668,8 +674,14 @@ ifeq ($(COMPILER),ldc)
         PICOLIBC_MULTIDIR := $(shell $(BAREMETAL_GCC) $(BAREMETAL_CFLAGS) --print-multi-directory 2>/dev/null)
         BAREMETAL_LIBC   := $(or $(filter /%,$(shell $(BAREMETAL_GCC) --specs=picolibc.specs $(BAREMETAL_CFLAGS) --print-file-name=libc.a 2>/dev/null)),$(filter /%,$(shell $(BAREMETAL_GCC) $(BAREMETAL_CFLAGS) --print-file-name=libc.a 2>/dev/null)),$(wildcard /usr/lib/picolibc/riscv64-unknown-elf/lib/$(PICOLIBC_MULTIDIR)/libc.a))
         BAREMETAL_LIBM   := $(or $(filter /%,$(shell $(BAREMETAL_GCC) --specs=picolibc.specs $(BAREMETAL_CFLAGS) --print-file-name=libm.a 2>/dev/null)),$(filter /%,$(shell $(BAREMETAL_GCC) $(BAREMETAL_CFLAGS) --print-file-name=libm.a 2>/dev/null)),$(wildcard /usr/lib/picolibc/riscv64-unknown-elf/lib/$(PICOLIBC_MULTIDIR)/libm.a))
-        # Caller adds: -L-T<linker_script> + any vendor blob archives
-        DFLAGS := $(DFLAGS) -L--gc-sections --link-internally -L-z -Lnorelro -L$(BAREMETAL_LIBC) -L$(BAREMETAL_LIBM) -L$(BAREMETAL_LIBGCC)
+        # Caller adds: -L-T<linker_script> + any vendor blob archives.
+        # TODO: drop -L--allow-multiple-definition once we migrate intentional
+        # blob-symbol overrides (currently bl_sleep_check) to -L--wrap=<sym>.
+        # The flag silently hides shadow-stub bugs (see bl808_m0/wifi.d for
+        # the history of bl_init/bl_pm_ops_register/bl_nap_calculate/bl_reset_evt
+        # accidental shadows). Re-enable the strict link periodically by
+        # commenting this out and running clean to catch new shadows.
+        DFLAGS := $(DFLAGS) -L--gc-sections -L--allow-multiple-definition --link-internally -L-z -Lnorelro -L$(BAREMETAL_LIBC) -L$(BAREMETAL_LIBM) -L$(BAREMETAL_LIBGCC)
       else ifeq ($(ARCH),xtensa)
         # Xtensa: emit LLVM bitcode for two-stage codegen via Espressif's llc
         # (upstream LLVM Xtensa backend crashes on invoke+landingpad at -O1+).

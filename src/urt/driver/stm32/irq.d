@@ -8,10 +8,12 @@ module urt.driver.stm32.irq;
 
 enum bool has_plic = false;
 enum bool has_nvic = true;
+enum bool has_clic = false;
 enum bool has_per_irq_control = true;
 enum bool has_irq_priority = true;
 enum bool has_wait_for_interrupt = false;
 enum bool has_irq_diagnostics = false;
+enum bool has_global_irq_state = true;
 enum bool has_smp = false;
 
 version (STM32F7)
@@ -28,28 +30,56 @@ private enum ulong NVIC_ISPR0 = 0xE000E200;
 private enum ulong NVIC_ICPR0 = 0xE000E280;
 private enum ulong NVIC_IPR0  = 0xE000E400;
 
-void irq_disable()
+// Cortex-M PRIMASK: bit 0 set means interrupts masked. Read it before
+// mutating so callers (including IrqGuard) can restore prior state.
+bool irq_disable()
 {
-    asm @nogc nothrow { "cpsid i"; }
+    uint primask;
+    asm @nogc nothrow
+    {
+        `
+        mrs   %0, primask
+        cpsid i
+        `
+        : "=r" (primask);
+    }
+    return (primask & 1) == 0;
 }
 
-void irq_enable()
+bool irq_enable()
 {
-    asm @nogc nothrow { "cpsie i"; }
+    uint primask;
+    asm @nogc nothrow
+    {
+        `
+        mrs   %0, primask
+        cpsie i
+        `
+        : "=r" (primask);
+    }
+    return (primask & 1) == 0;
 }
 
-void irq_set_enable(uint irq_num)
+bool irq_set_enable(uint irq_num)
 {
     immutable reg = irq_num / 32;
     immutable bit = irq_num % 32;
-    volatileStore(cast(uint*)(NVIC_ISER0 + reg * 4), 1u << bit);
+    auto iser = cast(uint*)(NVIC_ISER0 + reg * 4);
+    bool prev = (volatileLoad(iser) & (1u << bit)) != 0;
+    volatileStore(iser, 1u << bit);
+    return prev;
 }
 
-void irq_clear_enable(uint irq_num)
+bool irq_clear_enable(uint irq_num)
 {
     immutable reg = irq_num / 32;
     immutable bit = irq_num % 32;
+    // NVIC mirrors enable state in ISER; reading ISER tells us prior bit
+    // regardless of which window (ISER vs ICER) we use to mutate it.
+    auto iser = cast(uint*)(NVIC_ISER0 + reg * 4);
+    bool prev = (volatileLoad(iser) & (1u << bit)) != 0;
     volatileStore(cast(uint*)(NVIC_ICER0 + reg * 4), 1u << bit);
+    return prev;
 }
 
 // Set priority for a peripheral IRQ (0 = highest, 255 = lowest)

@@ -12,29 +12,38 @@ nothrow @nogc:
 
 enum bool has_plic = false;
 enum bool has_nvic = false;
+enum bool has_clic = false;
 enum bool has_per_irq_control = false; // TODO: wire up esp_intr_alloc
 enum bool has_irq_priority = false;    // TODO: wire up esp_intr_alloc priority flags
 enum bool has_wait_for_interrupt = true;
 enum bool has_irq_diagnostics = false;
+
+// FreeRTOS critical sections are recursive (portENTER nests with a per-mux
+// counter), so the return value is not a meaningful "prior global IRQ" bit
+// the way it is on bare-metal. Callers must pair enter/exit, and IrqGuard
+// does -- we always claim "was enabled" so the guard unconditionally exits.
+enum bool has_global_irq_state = false;
 enum bool has_smp = false;
 enum uint irq_max = 32;
 
-void irq_disable()
+bool irq_disable()
 {
     vPortEnterCritical(&_irq_mux);
+    return true;
 }
 
-void irq_enable()
+bool irq_enable()
 {
     vPortExitCritical(&_irq_mux);
+    return true;
 }
 
-void irq_set_enable(uint irq)
+bool irq_set_enable(uint irq)
 {
     assert(false, "TODO: use esp_intr_alloc");
 }
 
-void irq_clear_enable(uint irq)
+bool irq_clear_enable(uint irq)
 {
     assert(false, "TODO: use esp_intr_free");
 }

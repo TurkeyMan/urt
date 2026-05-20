@@ -12,7 +12,7 @@ enum bool has_mtime = true;
 enum bool has_rtc = false;
 enum bool has_mcycle = false;
 enum bool has_timer_stop = false;
-enum bool has_wfi_sleep = false;
+enum bool has_oneshot_timer = false;
 
 ulong mtime_read()
 {

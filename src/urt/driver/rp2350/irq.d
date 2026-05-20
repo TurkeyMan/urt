@@ -8,10 +8,12 @@ module urt.driver.rp2350.irq;
 
 enum bool has_plic = false;
 enum bool has_nvic = true;
+enum bool has_clic = false;
 enum bool has_per_irq_control = true;
 enum bool has_irq_priority = true;
 enum bool has_wait_for_interrupt = false;
 enum bool has_irq_diagnostics = false;
+enum bool has_global_irq_state = true;
 enum bool has_smp = false;
 enum uint irq_max = 52;
 
@@ -24,32 +26,56 @@ private enum ulong NVIC_ISPR0 = 0xE000E200;  // Interrupt Set Pending
 private enum ulong NVIC_ICPR0 = 0xE000E280;  // Interrupt Clear Pending
 private enum ulong NVIC_IPR0  = 0xE000E400;  // Interrupt Priority (byte-accessible)
 
-// Globally disable interrupts (set PRIMASK)
-void irq_disable()
+// Cortex-M33 PRIMASK: bit 0 set means interrupts masked. Read it before
+// mutating so callers (IrqGuard) can restore prior state.
+bool irq_disable()
 {
-    asm @nogc nothrow { "cpsid i"; }
+    uint primask;
+    asm @nogc nothrow
+    {
+        `
+        mrs   %0, primask
+        cpsid i
+        `
+        : "=r" (primask);
+    }
+    return (primask & 1) == 0;
 }
 
-// Globally enable interrupts (clear PRIMASK)
-void irq_enable()
+bool irq_enable()
 {
-    asm @nogc nothrow { "cpsie i"; }
+    uint primask;
+    asm @nogc nothrow
+    {
+        `
+        mrs   %0, primask
+        cpsie i
+        `
+        : "=r" (primask);
+    }
+    return (primask & 1) == 0;
 }
 
-// Enable a specific peripheral IRQ (0-51)
-void irq_set_enable(uint irq_num)
+// Enable a specific peripheral IRQ (0-51). Returns previous state.
+bool irq_set_enable(uint irq_num)
 {
     immutable reg = irq_num / 32;
     immutable bit = irq_num % 32;
-    volatileStore(cast(uint*)(NVIC_ISER0 + reg * 4), 1u << bit);
+    auto iser = cast(uint*)(NVIC_ISER0 + reg * 4);
+    bool prev = (volatileLoad(iser) & (1u << bit)) != 0;
+    volatileStore(iser, 1u << bit);
+    return prev;
 }
 
-// Disable a specific peripheral IRQ
-void irq_clear_enable(uint irq_num)
+// Disable a specific peripheral IRQ. Returns previous state.
+bool irq_clear_enable(uint irq_num)
 {
     immutable reg = irq_num / 32;
     immutable bit = irq_num % 32;
+    auto iser = cast(uint*)(NVIC_ISER0 + reg * 4);
+    bool prev = (volatileLoad(iser) & (1u << bit)) != 0;
     volatileStore(cast(uint*)(NVIC_ICER0 + reg * 4), 1u << bit);
+    return prev;
 }
 
 // Set priority for a peripheral IRQ (0 = highest, 255 = lowest)

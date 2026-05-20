@@ -50,7 +50,7 @@ void sleep(Duration duration)
         static if (has_mtime)
         {
             ulong deadline = mtime_read() + duration.as!"usecs";
-            static if (has_wfi_sleep)
+            static if (has_oneshot_timer && has_wait_for_interrupt)
             {
                 mtimecmp_write_oneshot(deadline);
                 auto was_enabled = enable_irq(IrqClass.timer);
@@ -73,18 +73,20 @@ void sleep(Duration duration)
 
 struct MemoryPool
 {
-    ulong total;          // capacity in bytes (0 if pool absent)
-    ulong used;           // currently allocated
-    ulong peak_used;      // high-water mark of used (0 if unavailable)
-    ulong largest_free;   // largest contiguous allocatable block (0 if unknown)
+    string name;        // short label ("RAM", "TCM", "SRAM", "PSRAM", ...)
+    ulong total;        // capacity in bytes (0 means slot unused)
+    ulong used;         // currently allocated
+    ulong peak_used;    // high-water mark of used (0 if unavailable)
+    ulong largest_free; // largest contiguous allocatable block (0 if unknown)
 }
+
+enum MaxMemoryPools = 4;
 
 struct SystemInfo
 {
     string os_name;
     string processor;
-    MemoryPool fast_ram;   // internal SRAM (host: process resident set)
-    MemoryPool ext_ram;    // PSRAM; zero fields when not present
+    MemoryPool[MaxMemoryPools] pools;  // unused slots have total == 0
     Duration uptime;
 }
 
@@ -95,16 +97,17 @@ SystemInfo get_sysinfo()
     r.processor = ProcessorName;
     version (Windows)
     {
+        r.pools[0].name = "RAM";
         MEMORYSTATUSEX mem;
         mem.dwLength = MEMORYSTATUSEX.sizeof;
         if (GlobalMemoryStatusEx(&mem))
-            r.fast_ram.total = mem.ullTotalPhys;
+            r.pools[0].total = mem.ullTotalPhys;
         PROCESS_MEMORY_COUNTERS pmc;
         pmc.cb = PROCESS_MEMORY_COUNTERS.sizeof;
         if (GetProcessMemoryInfo(GetCurrentProcess(), &pmc, pmc.sizeof))
         {
-            r.fast_ram.used = pmc.WorkingSetSize;          // process resident
-            r.fast_ram.peak_used = pmc.PeakWorkingSetSize; // peak resident
+            r.pools[0].used = pmc.WorkingSetSize;          // process resident
+            r.pools[0].peak_used = pmc.PeakWorkingSetSize; // peak resident
         }
         r.uptime = msecs(GetTickCount64());
     }
@@ -116,14 +119,15 @@ SystemInfo get_sysinfo()
         if (sysinfo(&info) < 0)
             assert(false, "sysinfo() failed!");
 
-        r.fast_ram.total = info.totalram * cast(ulong)info.mem_unit;
+        r.pools[0].name = "RAM";
+        r.pools[0].total = info.totalram * cast(ulong)info.mem_unit;
 
         // mallinfo2 gives heap-precise bytes-in-use; VmHWM is peak resident
         // (process-level, includes code/libs/stack but glibc has no peak-heap
         // counter so it's the tightest available proxy).
         Mallinfo2 mi = mallinfo2();
-        r.fast_ram.used = mi.uordblks + mi.hblkhd;
-        r.fast_ram.peak_used = read_proc_self_field("VmHWM:");
+        r.pools[0].used = mi.uordblks + mi.hblkhd;
+        r.pools[0].peak_used = read_proc_self_field("VmHWM:");
 
         r.uptime = seconds(info.uptime);
     }
@@ -137,36 +141,48 @@ SystemInfo get_sysinfo()
 
         assert(pages >= 0 && page_size >= 0, "sysconf() failed!");
 
-        r.fast_ram.total = cast(ulong)pages * page_size;
+        r.pools[0].name = "RAM";
+        r.pools[0].total = cast(ulong)pages * page_size;
         if (avail >= 0)
-            r.fast_ram.used = r.fast_ram.total - cast(ulong)avail * page_size;
+            r.pools[0].used = r.pools[0].total - cast(ulong)avail * page_size;
     }
     else version (Espressif)
     {
-        r.fast_ram.total = heap_caps_get_total_size(MALLOC_CAP_INTERNAL);
-        if (r.fast_ram.total > 0)
+        r.pools[0].name = "SRAM";
+        r.pools[0].total = heap_caps_get_total_size(MALLOC_CAP_INTERNAL);
+        if (r.pools[0].total > 0)
         {
-            r.fast_ram.used = r.fast_ram.total - heap_caps_get_free_size(MALLOC_CAP_INTERNAL);
-            r.fast_ram.peak_used = r.fast_ram.total - heap_caps_get_minimum_free_size(MALLOC_CAP_INTERNAL);
-            r.fast_ram.largest_free = heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL);
+            r.pools[0].used = r.pools[0].total - heap_caps_get_free_size(MALLOC_CAP_INTERNAL);
+            r.pools[0].peak_used = r.pools[0].total - heap_caps_get_minimum_free_size(MALLOC_CAP_INTERNAL);
+            r.pools[0].largest_free = heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL);
         }
 
-        r.ext_ram.total = heap_caps_get_total_size(MALLOC_CAP_SPIRAM);
-        if (r.ext_ram.total > 0)
+        r.pools[1].name = "PSRAM";
+        r.pools[1].total = heap_caps_get_total_size(MALLOC_CAP_SPIRAM);
+        if (r.pools[1].total > 0)
         {
-            r.ext_ram.used = r.ext_ram.total - heap_caps_get_free_size(MALLOC_CAP_SPIRAM);
-            r.ext_ram.peak_used = r.ext_ram.total - heap_caps_get_minimum_free_size(MALLOC_CAP_SPIRAM);
-            r.ext_ram.largest_free = heap_caps_get_largest_free_block(MALLOC_CAP_SPIRAM);
+            r.pools[1].used = r.pools[1].total - heap_caps_get_free_size(MALLOC_CAP_SPIRAM);
+            r.pools[1].peak_used = r.pools[1].total - heap_caps_get_minimum_free_size(MALLOC_CAP_SPIRAM);
+            r.pools[1].largest_free = heap_caps_get_largest_free_block(MALLOC_CAP_SPIRAM);
         }
 
         r.uptime = getAppTime();
     }
     else version (Bouffalo)
     {
-        auto mi = mallinfo();
-        r.fast_ram.total = heap_len();
-        r.fast_ram.used = mi.uordblks;
-        r.fast_ram.peak_used = mi.max_total_mem;
+        import urt.driver.bl_common.alloc : num_pools, query_pool_stats, PoolStats;
+        import urt.string : c_string;
+
+        foreach (i; 0 .. num_pools)
+        {
+            PoolStats s;
+            query_pool_stats(i, s);
+            r.pools[i].name = s.name.c_string;
+            r.pools[i].total = s.total;
+            r.pools[i].used = s.used;
+            r.pools[i].peak_used = s.peak_used;
+            r.pools[i].largest_free = s.largest_free;
+        }
         r.uptime = getAppTime();
     }
     return r;
@@ -203,25 +219,13 @@ unittest
     assert(info.uptime > Duration.zero);
 
     import urt.io;
-    writelnf("System: {0} - {1}", info.os_name, info.processor);
-    writelnf("  fast: {0}kb used / {1}kb total (peak {2}kb)",
-        info.fast_ram.used / 1024, info.fast_ram.total / 1024, info.fast_ram.peak_used / 1024);
-    if (info.ext_ram.total > 0)
-        writelnf("  ext:  {0}kb used / {1}kb total (peak {2}kb)",
-            info.ext_ram.used / 1024, info.ext_ram.total / 1024, info.ext_ram.peak_used / 1024);
-
-    version (Embedded)
+    writelnf("\nSystem: {0} - {1}", info.os_name, info.processor);
+    foreach (ref p; info.pools)
     {
-        import urt.driver.irq;
-        static if (has_irq_diagnostics)
-        {
-            writelnf("  IRQ total: {0}", irq_count);
-            foreach (i; 0 .. irq_histogram.length)
-            {
-                if (irq_histogram[i] > 0)
-                    writelnf("    IRQ {0}: {1}", i, irq_histogram[i]);
-            }
-        }
+        if (p.total == 0)
+            continue;
+        writelnf("  {0}: {1}kb used / {2}kb total (peak {3}kb)",
+            p.name, p.used / 1024, p.total / 1024, p.peak_used / 1024);
     }
 }
 

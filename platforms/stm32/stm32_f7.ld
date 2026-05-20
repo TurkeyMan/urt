@@ -129,6 +129,7 @@ SECTIONS
 
     /* Stack at top of DTCM (fast access) */
     _stack_top = ORIGIN(DTCM) + LENGTH(DTCM);
+    _stack_low = ORIGIN(DTCM);
     __StackTop = _stack_top;
 
     /DISCARD/ :

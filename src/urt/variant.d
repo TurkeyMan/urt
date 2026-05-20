@@ -2,6 +2,7 @@ module urt.variant;
 
 import urt.algorithm : compare;
 import urt.array;
+import urt.attribute : fast_data;
 import urt.conv;
 import urt.kvp;
 import urt.lifetime;
@@ -1550,8 +1551,8 @@ struct TypeDetails
     ptrdiff_t function(void* val, char[] buffer, bool do_format, const(char)[] format_spec, const(FormatArg)[] format_args) nothrow @nogc stringify;
     int function(const void* a, const void* b, int type) pure nothrow @nogc cmp;
 }
-__gshared TypeDetails[16] g_type_details;
-__gshared ushort g_num_type_details = 0;
+@fast_data __gshared TypeDetails[16] g_type_details;
+@fast_data __gshared ushort g_num_type_details = 0;
 
 typeof(g_type_details)* type_details() => &g_type_details;
 ushort num_type_details() => g_num_type_details;

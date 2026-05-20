@@ -50,6 +50,19 @@ extern(C) void _exit(int code) @nogc nothrow { while (true) {} }
 extern(C) int _kill(int pid, int sig) @nogc nothrow { return -1; }
 extern(C) int _getpid() @nogc nothrow { return 1; }
 
+// newlib time() calls gettimeofday(). No RTC yet -- return 0 (epoch).
+// Wall-clock-dependent code (cert expiry, etc.) sees Jan 1 1970 until M0 syncs time over IPC.
+struct timeval { long tv_sec; long tv_usec; }
+extern(C) int gettimeofday(timeval* tv, void* tz) @nogc nothrow
+{
+    if (tv !is null)
+    {
+        tv.tv_sec = 0;
+        tv.tv_usec = 0;
+    }
+    return 0;
+}
+
 // ================================================================
 // POSIX networking stubs (replaced by XRAM WiFi IPC when ready)
 // ================================================================

@@ -72,6 +72,10 @@ template write_to(WriteTarget target, bool newline = false)
 }
 
 int writef_to(WriteTarget target, bool newline = false, Args...)(const(char)[] fmt, ref Args args)
+    if (Args.length == 0)
+    => write_to!(target, newline)(fmt);
+
+int writef_to(WriteTarget target, bool newline = false, Args...)(const(char)[] fmt, ref Args args)
     if (Args.length > 0)
 {
     import urt.string.format;
@@ -113,7 +117,7 @@ int writelnf(Args...)(ref Args args)
 
 unittest
 {
-    writeln("Hello, World!");
+    writeln("\nHello, World!");
     writeln("Hello", " World!");
     writelnf("Hello, World! {0}", "wow!");
 

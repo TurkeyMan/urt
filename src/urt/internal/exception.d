@@ -30,16 +30,33 @@ struct Resolved
     size_t offset;  // addr - symbol_base
 }
 
+// TCO-defeat anchor. Any wrapper that MUST be a real frame at runtime
+// (because the fp walker is counting frames) calls defeat_tco() between
+// the inner call and the return. A volatile write LLVM can't prove dead
+// blocks both tail-call optimisation and prologue/frame elision.
+private __gshared uint _tco_anchor;
+
+pragma(inline, false)
+void defeat_tco() @trusted nothrow @nogc
+{
+    import core.volatile : volatileLoad, volatileStore;
+    volatileStore(&_tco_anchor, volatileLoad(&_tco_anchor) + 1);
+}
+
 pragma(inline, false)
 size_t capture_trace(void*[] addrs) @trusted
 {
-    return _capture_trace(addrs);
+    auto r = _capture_trace(addrs);
+    defeat_tco();
+    return r;
 }
 
 pragma(inline, false)
 void* caller_address(uint skip = 0) @trusted
 {
-    return _caller_address(skip);
+    auto r = _caller_address(skip);
+    defeat_tco();
+    return r;
 }
 
 bool resolve_address(void* addr, out Resolved r) @trusted
@@ -382,26 +399,29 @@ version (unittest)
         return false;
     }
 
-    // Skip-count verification layers. Each is `pragma(inline, false)` so
-    // the frames actually exist at runtime; each assigns to a local
-    // before returning to defeat tail-call optimisation. Distinct,
-    // grep-friendly names make the resolved symbols easy to match.
+    // Skip-count verification layers. Each calls defeat_tco() between the
+    // inner call and the return so LDC keeps the frame instead of tail-
+    // calling. Distinct, grep-friendly names make the resolved symbols
+    // easy to match.
 
-    private pragma(inline, false)
-    void* eh_ca_layer_0(uint skip) @trusted nothrow @nogc
-        => caller_address(skip);
-
-    private pragma(inline, false)
-    void* eh_ca_layer_1(uint skip) @trusted nothrow @nogc
+    private void* eh_ca_layer_0(uint skip) @trusted nothrow @nogc
     {
-        auto pc = eh_ca_layer_0(skip);
+        auto pc = caller_address(skip);
+        defeat_tco();
         return pc;
     }
 
-    private pragma(inline, false)
-    void* eh_ca_layer_2(uint skip) @trusted nothrow @nogc
+    private void* eh_ca_layer_1(uint skip) @trusted nothrow @nogc
+    {
+        auto pc = eh_ca_layer_0(skip);
+        defeat_tco();
+        return pc;
+    }
+
+    private void* eh_ca_layer_2(uint skip) @trusted nothrow @nogc
     {
         auto pc = eh_ca_layer_1(skip);
+        defeat_tco();
         return pc;
     }
 
@@ -410,11 +430,15 @@ version (unittest)
     private void eh_demangle_target() @trusted nothrow @nogc {}
 
     // Helper: this unittest function is what we expect to find as the
-    // caller in the capture_trace and skip-count tests below. Wrapping the
-    // captures in a private function lets us assert by name match.
-    private pragma(inline, false)
-    size_t eh_capture_here(void*[] buf) @trusted nothrow @nogc
-        => capture_trace(buf);
+    // caller in the capture_trace and skip-count tests below. defeat_tco
+    // keeps eh_capture_here as a real frame so the walker captures
+    // capture_trace's saved ra (= a PC inside eh_capture_here) as buf[0].
+    private size_t eh_capture_here(void*[] buf) @trusted nothrow @nogc
+    {
+        auto n = capture_trace(buf);
+        defeat_tco();
+        return n;
+    }
 }
 
 unittest
@@ -476,31 +500,40 @@ unittest
 
     // demangler
 
-    // Non-D / degenerate inputs pass through unchanged.
+    // Non-D / degenerate inputs pass through unchanged. This holds for both
+    // the real demangler and the Tiny stub (which returns input unchanged
+    // for everything), so these asserts always run.
     assert(demangle_symbol("main", name) == "main");
     assert(demangle_symbol("", name) == "");
     assert(demangle_symbol("_D", name) == "_D");
     assert(demangle_symbol("?MyClass@@QAEXXZ", name) == "?MyClass@@QAEXXZ");
 
-    // Real D mangling via .mangleof - qualified path must contain the
-    // function name and at least one module-separator dot.
-    auto dem = demangle_symbol(eh_demangle_target.mangleof, name);
-    assert(eh_contains(dem, "eh_demangle_target"), dem);
-    bool has_dot = false;
-    foreach (c; dem) if (c == '.')
+    // Real demangling tests -- skipped on Tiny because the stub there just
+    // returns input unchanged (size optimisation; offline addr2line gives
+    // the symbol name anyway).
+    version (Tiny) {}
+    else
     {
-        has_dot = true;
-        break;
+        // Real D mangling via .mangleof - qualified path must contain the
+        // function name and at least one module-separator dot.
+        auto dem = demangle_symbol(eh_demangle_target.mangleof, name);
+        assert(eh_contains(dem, "eh_demangle_target"), dem);
+        bool has_dot = false;
+        foreach (c; dem) if (c == '.')
+        {
+            has_dot = true;
+            break;
+        }
+        assert(has_dot, dem);
+
+        // Hand-crafted ABI-compliant manglings - parse must recover the
+        // qualified name prefix regardless of the trailing type signature.
+        assert(eh_contains(demangle_symbol("_D3foo3barFZv", name), "foo.bar"));
+        assert(eh_contains(demangle_symbol("_D3foo3bar3bazFZv", name), "foo.bar.baz"));
+
+        // Malformed input must not crash - output is undefined but safe.
+        demangle_symbol("_D999zzz", name);      // LName length overflows src
+        demangle_symbol("_D3fooQ", name);       // Q back-ref with no offset
+        demangle_symbol("_D__T1aZ", name);      // template with minimal content
     }
-    assert(has_dot, dem);
-
-    // Hand-crafted ABI-compliant manglings - parse must recover the
-    // qualified name prefix regardless of the trailing type signature.
-    assert(eh_contains(demangle_symbol("_D3foo3barFZv", name), "foo.bar"));
-    assert(eh_contains(demangle_symbol("_D3foo3bar3bazFZv", name), "foo.bar.baz"));
-
-    // Malformed input must not crash - output is undefined but safe.
-    demangle_symbol("_D999zzz", name);      // LName length overflows src
-    demangle_symbol("_D3fooQ", name);       // Q back-ref with no offset
-    demangle_symbol("_D__T1aZ", name);      // template with minimal content
 }

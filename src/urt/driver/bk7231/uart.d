@@ -24,7 +24,7 @@ enum bool has_irq_driven_uart = false;
 enum bool has_dma_driven_uart = false;
 
 
-// ─── Register offsets (from SDK uart.h) ──────────────────────────────
+// --- Register offsets (from SDK uart.h) ------------------------------
 
 private enum uint[2] uart_bases = [0x0080_2100, 0x0080_2200];
 
@@ -41,7 +41,7 @@ private enum : uint
 }
 
 
-// ─── CONFIG register (0x00) ──────────────────────────────────────────
+// --- CONFIG register (0x00) ------------------------------------------
 
 private enum : uint
 {
@@ -58,7 +58,7 @@ private enum : uint
 }
 
 
-// ─── FIFO_CONFIG register (0x04) ─────────────────────────────────────
+// --- FIFO_CONFIG register (0x04) -------------------------------------
 
 private enum : uint
 {
@@ -71,7 +71,7 @@ private enum : uint
 }
 
 
-// ─── FIFO_STATUS register (0x08, read-only) ──────────────────────────
+// --- FIFO_STATUS register (0x08, read-only) --------------------------
 
 private enum : uint
 {
@@ -87,7 +87,7 @@ private enum : uint
 }
 
 
-// ─── INT_ENABLE (0x10) / INT_STATUS (0x14) ───────────────────────────
+// --- INT_ENABLE (0x10) / INT_STATUS (0x14) ---------------------------
 // Same bit layout for both registers.
 
 private enum : uint
@@ -105,7 +105,7 @@ private enum : uint
 }
 
 
-// ─── FLOW_CONFIG register (0x18) ─────────────────────────────────────
+// --- FLOW_CONFIG register (0x18) -------------------------------------
 
 private enum : uint
 {
@@ -119,7 +119,7 @@ private enum : uint
 }
 
 
-// ─── Hardware constants ──────────────────────────────────────────────
+// --- Hardware constants ----------------------------------------------
 
 private enum uint FIFO_DEPTH = 128;
 
@@ -129,7 +129,7 @@ private enum uint SDK_RX_FIFO_THRESHOLD = 0x30;
 private enum uint SDK_RX_STOP_DETECT    = 0;  // 32 clock cycles
 
 
-// ─── ICU registers for UART clock control ────────────────────────────
+// --- ICU registers for UART clock control ----------------------------
 // From SDK icu.h: ICU_PERI_CLK_PWD = ICU_BASE + 2*4
 
 private enum uint ICU_BASE         = 0x0080_2000;
@@ -146,7 +146,7 @@ private enum ubyte[2] default_rx_pins = [10, 1];   // UART1=GPIO10, UART2=GPIO1
 private enum uint UART_PERIAL_MODE = 0;
 
 
-// ─── Register access helpers ─────────────────────────────────────────
+// --- Register access helpers -----------------------------------------
 
 private uint reg_read(uint addr)
 {
@@ -173,7 +173,7 @@ private bool gpio_setup_uart_pins(uint id, ref const UartConfig cfg)
 }
 
 
-// ─── ICU clock control ───────────────────────────────────────────────
+// --- ICU clock control -----------------------------------------------
 
 private void icu_uart_clock_enable(uint id)
 {
@@ -191,7 +191,7 @@ private void icu_uart_clock_disable(uint id)
 }
 
 
-// ─── Public API ──────────────────────────────────────────────────────
+// --- Public API ------------------------------------------------------
 
 bool uart_hw_init(uint id, UartConfig cfg)
 {

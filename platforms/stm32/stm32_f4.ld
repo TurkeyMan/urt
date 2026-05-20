@@ -127,6 +127,7 @@ SECTIONS
 
     /* Stack at top of RAM (4KB reserved) */
     _stack_top = ORIGIN(RAM) + LENGTH(RAM);
+    _stack_low = ORIGIN(RAM);
     __StackTop = _stack_top;
 
     /DISCARD/ :

@@ -65,12 +65,11 @@ _start:
 
     /* ── 3. Memory access ─────────────────────────────────────────── */
 
-    /* Release TZC security so D0 can access full PSRAM */
-    li      t0, 0x20005380      /* TZC_SEC_TZC_PSRAMA_TZSRG_CTRL */
-    lw      t1, 0(t0)
-    li      t2, -65537          /* ~(1 << 16) sign-extended */
-    and     t1, t1, t2
-    sw      t1, 0(t0)
+    /* TZC for D0 (CPU group + PSRAMA/B region enable) is configured by M0
+     * in urt.driver.bl808_m0.start.tzc_config_for_d0() before this core is
+     * released from reset.  Earlier versions cleared bit 16 of 0x20005380
+     * here, which was wrong polarity (bit 16 is region-enable; clearing it
+     * disables PSRAM access). */
 
     /* Clear PLIC interrupt enables and pending bits */
     li      t0, 0xE0002000      /* PLIC enable base */
@@ -99,6 +98,20 @@ _start:
     addi    t1, t1, 8
     j       .Lcopy_got
 .Lgot_done:
+
+    /* Copy .sram_data from PSRAM (LMA) to SRAM (VMA) -- @fast_data globals.
+     * Empty when no @fast_data is in use; loop is a no-op. */
+    la      t0, _sram_data_load
+    la      t1, _sram_data_start
+    la      t2, _sram_data_end
+.Lcopy_sram_data:
+    bgeu    t1, t2, .Lsram_data_done
+    ld      t3, 0(t0)
+    sd      t3, 0(t1)
+    addi    t0, t0, 8
+    addi    t1, t1, 8
+    j       .Lcopy_sram_data
+.Lsram_data_done:
 
     /* Copy .tdata from flash to SRAM (TLS initialized data) */
     la      t0, _tdata_load
@@ -174,15 +187,15 @@ _start:
     j       .Linit_array_loop
 .Linit_array_done:
 
-    /* Jump to uRT main(int argc, char** argv) */
-    li      a0, 0               /* argc = 0 */
-    li      a1, 0               /* argv = NULL */
-    call    main
-
-    /* If main returns, spin */
-.Lhalt:
-    wfi
-    j       .Lhalt
+    /* Enter main -- urt/package.d's extern(C) main(int argc, char** argv).
+     * argc=0/argv=null so the D-side _Dmain sees an empty args slice.
+     * Zero fp so backtraces terminate cleanly at main; zero ra so a return
+     * from main traps (caught by _crash_handler). */
+    li      a0, 0
+    li      a1, 0
+    li      s0, 0
+    li      ra, 0
+    j       main
 
 
 /* ================================================================

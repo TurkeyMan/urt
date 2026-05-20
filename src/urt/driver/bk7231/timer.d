@@ -22,12 +22,12 @@ import core.volatile;
 @nogc nothrow:
 
 
-// ─── Timer/PWM base (from SDK pwm.h) ────────────────────────────────
+// --- Timer/PWM base (from SDK pwm.h) --------------------------------
 
 private enum uint PWM_NEW_BASE = 0x0080_2A00;
 
 
-// ─── Timer0-2 registers (26MHz group) ────────────────────────────────
+// --- Timer0-2 registers (26MHz group) --------------------------------
 
 private enum : uint
 {
@@ -45,7 +45,7 @@ private enum : uint
 }
 
 
-// ─── Timer0-2 control register bits ──────────────────────────────────
+// --- Timer0-2 control register bits ----------------------------------
 
 private enum : uint
 {
@@ -61,21 +61,21 @@ private enum : uint
 }
 
 
-// ─── ICU clock power for timers ──────────────────────────────────────
+// --- ICU clock power for timers --------------------------------------
 // From SDK icu.h: ICU_PERI_CLK_PWD = ICU_BASE + 2*4 = 0x0080_2008
 
 private enum uint ICU_PERI_CLK_PWD    = 0x0080_2008;
 private enum uint PWD_TIMER_26M_CLK   = 1 << 20;
 
 
-// ─── Public interface ────────────────────────────────────────────────
+// --- Public interface ------------------------------------------------
 
 enum uint mtime_freq_hz = 26_000_000;
 enum bool has_mtime = true;
 enum bool has_rtc = false;
 enum bool has_mcycle = false;
 enum bool has_timer_stop = false;
-enum bool has_wfi_sleep = false;
+enum bool has_oneshot_timer = false;
 
 private enum uint timer_freq_hz = mtime_freq_hz;
 

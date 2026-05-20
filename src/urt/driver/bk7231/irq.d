@@ -10,43 +10,51 @@ import core.volatile;
 
 enum bool has_plic = false;
 enum bool has_nvic = false;
+enum bool has_clic = false;
 enum bool has_per_irq_control = true;
 enum bool has_irq_priority = false;
 enum bool has_wait_for_interrupt = false;
 enum bool has_irq_diagnostics = false;
+enum bool has_global_irq_state = true;
 enum bool has_smp = false;
 enum uint irq_max = 32;
 
-// Disable all IRQs (set CPSR I+F bits)
-void irq_disable()
+// ARMv5 CPSR: I=bit7 masks IRQ, F=bit6 masks FIQ. We report prior IRQ-enable
+// state only; FIQ is treated as a hard-disable that callers don't toggle.
+bool irq_disable()
 {
     uint cpsr;
     asm @nogc nothrow { "mrs %0, cpsr" : "=r" (cpsr); }
-    cpsr |= 0xC0;
-    asm @nogc nothrow { "msr cpsr_c, %0" :: "r" (cpsr); }
+    bool was_enabled = (cpsr & 0x80) == 0;
+    asm @nogc nothrow { "msr cpsr_c, %0" :: "r" (cpsr | 0xC0); }
+    return was_enabled;
 }
 
-// Enable IRQs (clear CPSR I bit)
-void irq_enable()
+bool irq_enable()
 {
     uint cpsr;
     asm @nogc nothrow { "mrs %0, cpsr" : "=r" (cpsr); }
-    cpsr &= ~0x80;
-    asm @nogc nothrow { "msr cpsr_c, %0" :: "r" (cpsr); }
+    bool was_enabled = (cpsr & 0x80) == 0;
+    asm @nogc nothrow { "msr cpsr_c, %0" :: "r" (cpsr & ~0x80); }
+    return was_enabled;
 }
 
-void irq_set_enable(uint irq_num)
+bool irq_set_enable(uint irq_num)
 {
-    uint mask = volatileLoad(cast(uint*)(cast(size_t)(icu_base + icu_int_enable)));
-    mask |= (1u << irq_num);
-    volatileStore(cast(uint*)(cast(size_t)(icu_base + icu_int_enable)), mask);
+    auto en = cast(uint*)(cast(size_t)(icu_base + icu_int_enable));
+    uint mask = volatileLoad(en);
+    bool prev = (mask & (1u << irq_num)) != 0;
+    volatileStore(en, mask | (1u << irq_num));
+    return prev;
 }
 
-void irq_clear_enable(uint irq_num)
+bool irq_clear_enable(uint irq_num)
 {
-    uint mask = volatileLoad(cast(uint*)(cast(size_t)(icu_base + icu_int_enable)));
-    mask &= ~(1u << irq_num);
-    volatileStore(cast(uint*)(cast(size_t)(icu_base + icu_int_enable)), mask);
+    auto en = cast(uint*)(cast(size_t)(icu_base + icu_int_enable));
+    uint mask = volatileLoad(en);
+    bool prev = (mask & (1u << irq_num)) != 0;
+    volatileStore(en, mask & ~(1u << irq_num));
+    return prev;
 }
 
 

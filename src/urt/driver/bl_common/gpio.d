@@ -1,5 +1,6 @@
-// BL616/BL618 GPIO (also used by BL808 M0 core, which shares the
-// bl618 peripheral set).
+// Bouffalo GPIO controller (BL618, BL808 D0, BL808 M0).
+//
+// Same register layout across all three; only the pin count differs.
 //
 // GPIO_CFG register at GLB_BASE + 0x8C4 + pin*4:
 //   bits[4:0] = function (11 = SWGPIO)
@@ -9,9 +10,7 @@
 //   bit[18]   = input value (read-only)
 //   bit[24]   = pull-up enable
 //   bit[25]   = pull-down enable
-//
-// Pin numbering: linear 0..34.
-module urt.driver.bl618.gpio;
+module urt.driver.bl_common.gpio;
 
 import core.volatile : volatileLoad, volatileStore;
 
@@ -20,7 +19,11 @@ import urt.driver.gpio : Pull, DriveMode;
 @nogc nothrow:
 
 
-enum uint num_gpio = 35;
+version (BL808_M0)    enum uint num_gpio = 35;  // shares the BL618 peripheral set
+else version (BL618)  enum uint num_gpio = 35;
+else version (BL808)  enum uint num_gpio = 47;  // D0 sees all 47 pads
+else static assert(false, "bl_common/gpio.d included on a non-Bouffalo target");
+
 enum bool has_pull_up = true;
 enum bool has_pull_down = true;
 enum bool has_open_drain = false;
@@ -32,8 +35,8 @@ uint gpio_count() => num_gpio;
 
 void gpio_output_init(uint pin, bool initial = false, DriveMode mode = DriveMode.push_pull)
 {
-    assert(pin < num_gpio, "gpio: pin out of range");
-    assert(mode == DriveMode.push_pull, "bl618 gpio: open-drain not supported");
+    assert(pin < num_gpio, "bouffalo gpio: pin out of range");
+    assert(mode == DriveMode.push_pull, "bouffalo gpio: open-drain not supported");
     uint cfg = GPIO_FUN_SWGPIO | GPIO_OUTPUT_EN;
     if (initial)
         cfg |= GPIO_OUTPUT_HIGH;
@@ -42,13 +45,13 @@ void gpio_output_init(uint pin, bool initial = false, DriveMode mode = DriveMode
 
 void gpio_input_init(uint pin, Pull pull = Pull.none)
 {
-    assert(pin < num_gpio, "gpio: pin out of range");
+    assert(pin < num_gpio, "bouffalo gpio: pin out of range");
     gpio_cfg_write(pin, GPIO_FUN_SWGPIO | GPIO_INPUT_EN | (uint(pull) << 24));
 }
 
 void gpio_output_set(uint pin, bool value)
 {
-    assert(pin < num_gpio, "gpio: pin out of range");
+    assert(pin < num_gpio, "bouffalo gpio: pin out of range");
     uint cfg = gpio_cfg_read(pin) & ~GPIO_OUTPUT_HIGH;
     if (value)
         cfg |= GPIO_OUTPUT_HIGH;
@@ -57,34 +60,34 @@ void gpio_output_set(uint pin, bool value)
 
 void gpio_output_toggle(uint pin)
 {
-    assert(pin < num_gpio, "gpio: pin out of range");
+    assert(pin < num_gpio, "bouffalo gpio: pin out of range");
     gpio_cfg_write(pin, gpio_cfg_read(pin) ^ GPIO_OUTPUT_HIGH);
 }
 
 bool gpio_input_read(uint pin)
 {
-    assert(pin < num_gpio, "gpio: pin out of range");
+    assert(pin < num_gpio, "bouffalo gpio: pin out of range");
     return (gpio_cfg_read(pin) & GPIO_INPUT_VALUE) != 0;
 }
 
 void gpio_set_pull(uint pin, Pull pull)
 {
-    assert(pin < num_gpio, "gpio: pin out of range");
+    assert(pin < num_gpio, "bouffalo gpio: pin out of range");
     uint cfg = gpio_cfg_read(pin) & ~(GPIO_PULL_UP | GPIO_PULL_DOWN);
     gpio_cfg_write(pin, cfg | (uint(pull) << 24));
 }
 
 void gpio_release(uint pin)
 {
-    assert(pin < num_gpio, "gpio: pin out of range");
+    assert(pin < num_gpio, "bouffalo gpio: pin out of range");
     gpio_cfg_write(pin, GPIO_FUN_SWGPIO);
 }
 
 void gpio_set_function(uint pin, uint function_id, Pull pull = Pull.none, DriveMode mode = DriveMode.push_pull)
 {
-    assert(pin < num_gpio, "gpio: pin out of range");
-    assert(function_id <= GPIO_FUN_MASK, "gpio: function_id out of range (5-bit field)");
-    assert(mode == DriveMode.push_pull, "bl618 gpio: open-drain not supported");
+    assert(pin < num_gpio, "bouffalo gpio: pin out of range");
+    assert(function_id <= GPIO_FUN_MASK, "bouffalo gpio: function_id out of range (5-bit field)");
+    assert(mode == DriveMode.push_pull, "bouffalo gpio: open-drain not supported");
     uint cfg = (function_id & GPIO_FUN_MASK) | GPIO_INPUT_EN | (uint(pull) << 24);
     gpio_cfg_write(pin, cfg);
 }

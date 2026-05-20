@@ -113,7 +113,7 @@ version (LDC)
         return cast(T)llvm_atomic_rmw_sub!A(cast(shared A*)&val, cast(A)mod, _ordering!ms);
     }
 
-    void atomicFence(MemoryOrder ms = MemoryOrder.seq)() pure @trusted
+    void atomic_fence(MemoryOrder ms = MemoryOrder.seq)() pure @trusted
     {
         llvm_memory_fence(_ordering!ms);
     }
@@ -373,7 +373,7 @@ else version (D_InlineAsm_X86_64)
         return _asm_fetch_add!T(cast(T*)&val, cast(T)-cast(IntOrLong!T)mod);
     }
 
-    void atomicFence(MemoryOrder ms = MemoryOrder.seq)() pure @trusted
+    void atomic_fence(MemoryOrder ms = MemoryOrder.seq)() pure @trusted
     {
         static if (ms != MemoryOrder.relaxed)
         {
@@ -590,7 +590,7 @@ else version (D_InlineAsm_X86)
         return _asm_fetch_add!T(cast(T*)&val, cast(T)-cast(IntOrLong!T)mod);
     }
 
-    void atomicFence(MemoryOrder ms = MemoryOrder.seq)() pure @trusted
+    void atomic_fence(MemoryOrder ms = MemoryOrder.seq)() pure @trusted
     {
         static if (ms != MemoryOrder.relaxed)
         {
@@ -735,7 +735,7 @@ else
         return old;
     }
 
-    void atomicFence(MemoryOrder ms = MemoryOrder.seq)() pure @trusted {}
+    void atomic_fence(MemoryOrder ms = MemoryOrder.seq)() pure @trusted {}
     void pause() pure @trusted {}
 }
 

@@ -127,6 +127,7 @@ SECTIONS
     __heap_end   = ORIGIN(SRAM) + LENGTH(SRAM) - 4K;
 
     _stack_top = ORIGIN(SRAM) + LENGTH(SRAM);
+    _stack_low = ORIGIN(SRAM);
     __StackTop = _stack_top;
 
     /DISCARD/ :

@@ -11,17 +11,23 @@ module urt.driver.baremetal.exception;
 
 version (BareMetal):
 
+import urt.attribute : noinline;
 import urt.internal.exception : Resolved;
 
 nothrow @nogc:
 
 // Linker symbols bounding the valid stack range. Used by the fp-chain
-// walker to stop dereferencing junk. Every bare-metal linker script in
-// this tree defines both.
-extern(C) extern __gshared {
-    pragma(mangle, "_stack_top") void* _stack_top_ptr;
-    pragma(mangle, "_bss_end")   void* _bss_end_ptr;
-}
+// walker to stop dereferencing junk. Each bare-metal linker script in
+// this tree defines both. _stack_low is the bottom of the stack reservation
+// (not _bss_end -- on M0 the stack is in OCRAM while .bss is in PSRAM, so
+// the two no longer share a region).
+//
+// These are absolute linker symbols with no storage -- only their addresses
+// matter. Declaring as `char` (size 1, never read) and using `&sym` is the
+// correct C/D pattern; declaring as `void*` would tell the compiler to
+// dereference 4/8 bytes at the symbol's address (i.e. read past stack top).
+extern(C) extern __gshared char _stack_top;
+extern(C) extern __gshared char _stack_low;
 
 
 // --- Shared fp-chain walker -------------------------------------------
@@ -43,8 +49,8 @@ size_t walk_fp_chain(size_t fp, void*[] out_addrs) @trusted
     if (out_addrs.length == 0)
         return 0;
 
-    const stack_hi = cast(size_t) _stack_top_ptr;
-    const stack_lo = cast(size_t) _bss_end_ptr;
+    const stack_hi = cast(size_t) &_stack_top;
+    const stack_lo = cast(size_t) &_stack_low;
 
     size_t n = 0;
     while (n < out_addrs.length)
@@ -97,40 +103,43 @@ private size_t read_fp() @trusted
 
 /// Capture the caller's call stack. First entry = return address of
 /// the function that called the public `capture_trace` wrapper.
+@noinline
 size_t _capture_trace(void*[] addrs) @trusted
 {
+    // LLVM elides _capture_trace's prologue and reads s0 before saving it,
+    // so read_fp() returns the CALLER's fp -- not our own. With LTO/tail-call
+    // chains (eh_capture_here -> capture_trace -> _capture_trace all tail-
+    // calling), this collapses to whichever frame is the topmost non-tail-
+    // called caller. Walk from there directly; the old "step up once"
+    // overshot whenever the wrapper chain tail-called.
     auto fp = read_fp();
     if (fp == 0)
         return 0;
-    // fp is _capture_trace's own frame. Step one up to the wrapper's
-    // frame, then walk_fp_chain reads the wrapper's saved ra (= return
-    // address in the caller). That becomes the first captured entry.
-    const prev_fp = *cast(size_t*)(fp - 2 * size_t.sizeof);
-    if (prev_fp == 0)
-        return 0;
-    return walk_fp_chain(prev_fp, addrs);
+    return walk_fp_chain(fp, addrs);
 }
 
 /// Return the return address of the `skip`-th frame above the public
 /// `caller_address` wrapper's caller.
+@noinline
 void* _caller_address(uint skip) @trusted
 {
+    // Same elision/tail-call pattern as _capture_trace: read_fp() returns
+    // the topmost non-tail-called caller's fp. With LLVM tail-calling the
+    // public capture_address wrapper, that is USER's fp directly. So
+    //   buf[0] = USER's saved ra = inside USER's caller   ← skip=0 wants this
+    //   buf[1] = caller's caller                          ← skip=1
     auto fp = read_fp();
     if (fp == 0)
         return null;
 
-    // walk_fp_chain starting from _caller_address's own fp produces:
-    //   buf[0] = PC inside the public wrapper (where _caller_address returns)
-    //   buf[1] = PC inside USER             (where wrapper returns)
-    //   buf[2] = PC inside USER's caller    ← skip=0 wants this
     void*[32] buf = void;
-    const need = skip + 3;
+    const need = skip + 1;
     if (need > buf.length)
         return null;
     const got = walk_fp_chain(fp, buf[0 .. need]);
     if (got < need)
         return null;
-    return buf[need - 1];
+    return buf[skip];
 }
 
 /// On bare-metal we have no on-device symbol table. Always returns

@@ -21,14 +21,14 @@ import urt.mem : strlen, memcpy;
 
 import urt.internal.sys.posix;
 
-// ╔═══════════════════════════════════════════════════════════════════╗
-// ║  !!! TODO !!!  THREADING IS NOT SUPPORTED.                        ║
-// ║                                                                   ║
-// ║  dladdr is MT-safe but the static scratch buffers used by the     ║
-// ║  DWARF .debug_line decoder (_dir_scratch, _file_scratch) and the  ║
-// ║  ELF self-mapping state are not. Add a mutex or per-thread state  ║
-// ║  before this program can use threads.                             ║
-// ╚═══════════════════════════════════════════════════════════════════╝
+// ===================================================================
+//   !!! TODO !!!  THREADING IS NOT SUPPORTED.                        
+//                                                                    
+//   dladdr is MT-safe but the static scratch buffers used by the     
+//   DWARF .debug_line decoder (_dir_scratch, _file_scratch) and the  
+//   ELF self-mapping state are not. Add a mutex or per-thread state  
+//   before this program can use threads.                             
+// ===================================================================
 
 private enum SEEK_END = 2;
 

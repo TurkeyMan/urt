@@ -142,6 +142,7 @@ SECTIONS
 
     /* Stack at top of SRAM (4KB reserved) */
     _stack_top = ORIGIN(SRAM) + LENGTH(SRAM);
+    _stack_low = ORIGIN(SRAM);
     __StackTop = _stack_top;
 
     /DISCARD/ :

@@ -29,9 +29,9 @@ import urt.driver.uart : Parity, StopBits, UartConfig;
 nothrow @nogc:
 
 
-// ══════════════════════════════════════════════════════════════════════════════
+// ==============================================================================
 // Register definitions
-// ══════════════════════════════════════════════════════════════════════════════
+// ==============================================================================
 
 enum num_uarts = 4;
 enum uint uart_clock_hz = 40_000_000;
@@ -79,10 +79,10 @@ private enum : uint
     CR_UTX_LIN_EN      = 1 << 3,
     CR_UTX_PRT_EN      = 1 << 4,
     CR_UTX_PRT_SEL     = 1 << 5,   // 0 = even, 1 = odd
-    CR_UTX_BIT_CNT_D_SHIFT = 8,    // [10:8] data bits: value + 4 (so 4 = 8-bit)
+    CR_UTX_BIT_CNT_D_SHIFT = 8,    // [10:8] data bits, field value = data_bits - 1
     CR_UTX_BIT_CNT_D_MASK  = 0x7 << 8,
-    CR_UTX_BIT_CNT_P_SHIFT = 12,   // [13:12] stop bits
-    CR_UTX_BIT_CNT_P_MASK  = 0x3 << 12,
+    CR_UTX_BIT_CNT_P_SHIFT = 11,   // [12:11] stop bits (NOT [13:12] -- bit 13 is BIT_CNT_B/break)
+    CR_UTX_BIT_CNT_P_MASK  = 0x3 << 11,
 }
 
 // URX_CONFIG (0x04) bits
@@ -162,9 +162,9 @@ import urt.mem.ring : RingBuffer;
 private alias Ring = RingBuffer!512;
 
 
-// ══════════════════════════════════════════════════════════════════════════════
+// ==============================================================================
 // Driver API
-// ══════════════════════════════════════════════════════════════════════════════
+// ==============================================================================
 
 // Per-UART state
 private __gshared Ring[num_uarts] rx_ring;
@@ -197,7 +197,7 @@ bool uart_hw_open(uint id, UartConfig cfg)
 
     // TX config: data bits, stop bits, parity
     tx_cfg &= ~(CR_UTX_BIT_CNT_D_MASK | CR_UTX_BIT_CNT_P_MASK | CR_UTX_PRT_EN | CR_UTX_PRT_SEL | CR_UTX_FRM_EN);
-    tx_cfg |= cast(uint)(cfg.data_bits - 4) << CR_UTX_BIT_CNT_D_SHIFT;
+    tx_cfg |= cast(uint)(cfg.data_bits - 1) << CR_UTX_BIT_CNT_D_SHIFT;
     tx_cfg |= cast(uint)cfg.stop_bits << CR_UTX_BIT_CNT_P_SHIFT;
     tx_cfg |= CR_UTX_FRM_EN;
     if (cfg.parity != Parity.none)
@@ -209,7 +209,7 @@ bool uart_hw_open(uint id, UartConfig cfg)
 
     // RX config: data bits, parity (stop bits are TX-only in hardware)
     rx_cfg &= ~(CR_URX_BIT_CNT_D_MASK | CR_URX_PRT_EN | CR_URX_PRT_SEL);
-    rx_cfg |= cast(uint)(cfg.data_bits - 4) << CR_URX_BIT_CNT_D_SHIFT;
+    rx_cfg |= cast(uint)(cfg.data_bits - 1) << CR_URX_BIT_CNT_D_SHIFT;
     if (cfg.parity != Parity.none)
     {
         rx_cfg |= CR_URX_PRT_EN;
@@ -397,9 +397,9 @@ bool uart_hw_check_errors(uint id)
 }
 
 
-// ══════════════════════════════════════════════════════════════════════════════
+// ==============================================================================
 // Interrupt handler and FIFO transfer
-// ══════════════════════════════════════════════════════════════════════════════
+// ==============================================================================
 
 private:
 
@@ -472,9 +472,9 @@ void uart_irq_handler(uint irq)
 }
 
 
-// ══════════════════════════════════════════════════════════════════════════════
+// ==============================================================================
 // Early-boot debug output (used before driver is initialized)
-// ══════════════════════════════════════════════════════════════════════════════
+// ==============================================================================
 
 public:
 
@@ -483,7 +483,7 @@ private auto u0_wr()  { return cast(uint*)cast(ulong)(uart_base[0] + FIFO_WDATA)
 private auto u3_cfg() { return cast(uint*)cast(ulong)(uart_base[3] + FIFO_CONFIG_1); }
 private auto u3_wr()  { return cast(uint*)cast(ulong)(uart_base[3] + FIFO_WDATA); }
 
-// ── UART0 (COM7, MCU domain) ────────────────────────────────────────────────
+// -- UART0 (COM7, MCU domain) ------------------------------------------------
 
 void uart0_putc(char c)
 {
@@ -526,7 +526,7 @@ void uart0_hex(ulong val)
     }
 }
 
-// ── UART3 (COM8, MM domain - D0's console) ──────────────────────────────────
+// -- UART3 (COM8, MM domain - D0's console) ----------------------------------
 
 void uart3_putc(char c)
 {
@@ -570,9 +570,9 @@ void uart3_hex(ulong val)
 }
 
 
-// ══════════════════════════════════════════════════════════════════════════════
+// ==============================================================================
 // Register access helpers
-// ══════════════════════════════════════════════════════════════════════════════
+// ==============================================================================
 
 private:
 

@@ -55,7 +55,7 @@ enum bool has_mtime = true;
 enum bool has_rtc = true;
 enum bool has_mcycle = true;
 enum bool has_timer_stop = true;
-enum bool has_wfi_sleep = true;
+enum bool has_oneshot_timer = true;
 
 // ================================================================
 // Time reading
@@ -219,28 +219,7 @@ ulong rtc_sec_to_ticks(ulong sec)
     return sec * rtc_freq_hz;
 }
 
-// ================================================================
-// HBN RAM (4KB, survives hibernate if VBAT maintained)
-//
-// The actual storage is in hbn_ram.c, placed in .hbn_ram section
-// by the linker. This avoids hardcoding addresses and lets the
-// linker manage the HBN RAM region.
-// ================================================================
-
-/// Persistent state across hibernate cycles.
-/// Backed by .hbn_ram section (see hbn_ram.c / linker script).
-struct HbnPersist
-{
-    enum uint HBN_MAGIC = 0x4F57_4254; // "OWBT" (OpenWatt Boot Time)
-
-    uint magic;
-    long utc_offset; // HBN ticks from RTC epoch to Unix epoch
-}
-
-/// Access the persistent state in HBN RAM.
-HbnPersist* hbn_persist()
-{
-    return cast(HbnPersist*)&_hbn_persist;
-}
-
-private extern extern(C) __gshared HbnPersist _hbn_persist;
+// HBN persistence struct and accessor moved to urt.driver.bl_common.hbn so
+// the M0 build can mirror D0's clock persistence without dragging in the
+// rest of timer.d (which is D0-only).
+public import urt.driver.bl_common.hbn : HbnPersist, hbn_persist;

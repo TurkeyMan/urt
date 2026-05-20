@@ -118,13 +118,25 @@ SECTIONS
         _tbss_end = .;
     } > DTCM
 
-    /* Heap in OCRAM after BSS */
-    __heap_start = _bss_end;
-    __heap_end   = ORIGIN(RAM) + LENGTH(RAM);
+    /* OCRAM heap pool (fast / slow / dma for urt.driver.bl_common.alloc).
+     * OCRAM is the only large pool on BL618 (no PSRAM), so it covers both
+     * fast and slow buckets. Starts after .bss, runs to end of OCRAM. */
+    __ocram_heap_start = _bss_end;
+    __ocram_heap_end   = ORIGIN(RAM) + LENGTH(RAM);
 
-    /* Stack in DTCM (fast access) */
+    /* DTCM heap pool (fastest). End of .tbss up to stack reservation. */
+    __dtcm_heap_start = _tbss_end;
+    __dtcm_heap_end   = ORIGIN(DTCM) + LENGTH(DTCM) - 8K;
+
+    /* Stack in DTCM (fast access), top 8K reserved. */
     _stack_top = ORIGIN(DTCM) + LENGTH(DTCM);
+    _stack_low = __dtcm_heap_end;
     __StackTop = _stack_top;
+
+    /* Compatibility aliases for get_sysinfo (urt.system.d) and the
+     * (now dead) bl618 _sbrk -- still references __heap_start/end. */
+    __heap_start = __ocram_heap_start;
+    __heap_end   = __ocram_heap_end;
 
     /DISCARD/ :
     {

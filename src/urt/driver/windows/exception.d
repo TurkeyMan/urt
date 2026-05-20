@@ -17,20 +17,20 @@ import urt.internal.exception : ClassInfo, Resolved, _d_isbaseof, _d_createTrace
 nothrow @nogc:
 
 
-// ══════════════════════════════════════════════════════════════════════
+// ======================================================================
 //  Stack trace support (DbgHelp, debug only)
-// ══════════════════════════════════════════════════════════════════════
+// ======================================================================
 //
-// ╔═══════════════════════════════════════════════════════════════════╗
-// ║  !!! TODO !!!  THREADING IS NOT SUPPORTED.                        ║
-// ║                                                                   ║
-// ║  DbgHelp is NOT thread-safe. All calls to SymFromAddr,            ║
-// ║  SymGetLineFromAddr64, SymInitialize, and StackWalk64 must be     ║
-// ║  serialized with a CRITICAL_SECTION (or equivalent) before this   ║
-// ║  program can use threads. The static scratch buffer inside        ║
-// ║  _resolve_address is also shared across callers - replace with    ║
-// ║  per-thread storage or a mutex when threading lands.              ║
-// ╚═══════════════════════════════════════════════════════════════════╝
+// ===================================================================
+//   !!! TODO !!!  THREADING IS NOT SUPPORTED.                        
+//                                                                    
+//   DbgHelp is NOT thread-safe. All calls to SymFromAddr,            
+//   SymGetLineFromAddr64, SymInitialize, and StackWalk64 must be     
+//   serialized with a CRITICAL_SECTION (or equivalent) before this   
+//   program can use threads. The static scratch buffer inside        
+//   _resolve_address is also shared across callers - replace with    
+//   per-thread storage or a mutex when threading lands.              
+// ===================================================================
 
 // --- DbgHelp types ---------------------------------------------------
 
@@ -337,9 +337,9 @@ bool _resolve_batch(const(void*)[] addrs, Resolved[] results) @trusted
     return true;
 }
 
-// ══════════════════════════════════════════════════════════════════════
+// ======================================================================
 //  Exception-handling runtime (compiler-specific)
-// ══════════════════════════════════════════════════════════════════════
+// ======================================================================
 
 version (GDC)
 {

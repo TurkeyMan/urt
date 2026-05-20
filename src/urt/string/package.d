@@ -15,6 +15,9 @@ public import urt.mem.temp : tstringz, twstringz;
 nothrow @nogc:
 
 
+inout(char)[] c_string(inout(char)* cstr) pure
+    => cstr ? cstr[0 .. cstr.strlen] : null;
+
 size_t strlen_s(const(char)[] s) pure
 {
     size_t len = 0;

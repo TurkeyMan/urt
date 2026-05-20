@@ -4,6 +4,8 @@ import urt.result : Result, InternalResult;
 
 version (Espressif)
     public import urt.driver.esp32.wifi;
+else version (BL808_M0)
+    public import urt.driver.bl808_m0.wifi;
 else
     enum uint num_wifi = 0;
 
