@@ -2,8 +2,10 @@
 //
 // ESP-IDF manages interrupts via esp_intr_alloc(). Direct vector table
 // access is discouraged since FreeRTOS owns it. Global disable/enable
-// uses FreeRTOS critical section primitives.
+// uses the FreeRTOS portMUX-based critical section directly.
 module urt.driver.esp32.irq;
+
+import urt.internal.sys.freertos : portMUX_TYPE, portMUX_FREE_VAL, vPortEnterCritical, vPortExitCritical;
 
 nothrow @nogc:
 
@@ -14,16 +16,17 @@ enum bool has_per_irq_control = false; // TODO: wire up esp_intr_alloc
 enum bool has_irq_priority = false;    // TODO: wire up esp_intr_alloc priority flags
 enum bool has_wait_for_interrupt = true;
 enum bool has_irq_diagnostics = false;
+enum bool has_smp = false;
 enum uint irq_max = 32;
 
 void irq_disable()
 {
-    _saved_state = ow_irq_disable();
+    vPortEnterCritical(&_irq_mux);
 }
 
 void irq_enable()
 {
-    ow_irq_enable(_saved_state);
+    vPortExitCritical(&_irq_mux);
 }
 
 void irq_set_enable(uint irq)
@@ -49,11 +52,11 @@ void wait_for_interrupt()
 
 private:
 
-__gshared uint _saved_state;
+// Single global mux serves as the IRQ-disable lock. portENTER_CRITICAL
+// is reentrant via the mux's internal count, so nested IrqGuards compose.
+__gshared portMUX_TYPE _irq_mux = portMUX_TYPE(portMUX_FREE_VAL, 0);
 
-extern(C) nothrow @nogc
-{
-    uint ow_irq_disable();
-    void ow_irq_enable(uint prev);
-    void ow_irq_wait();
-}
+// wait_for_interrupt remains a C shim -- it's per-arch inline asm
+// (waiti on Xtensa, wfi on RISC-V) that doesn't fit cleanly in a D
+// binding.
+extern(C) void ow_irq_wait() nothrow @nogc;

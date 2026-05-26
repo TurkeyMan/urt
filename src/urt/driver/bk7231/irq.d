@@ -14,6 +14,7 @@ enum bool has_per_irq_control = true;
 enum bool has_irq_priority = false;
 enum bool has_wait_for_interrupt = false;
 enum bool has_irq_diagnostics = false;
+enum bool has_smp = false;
 enum uint irq_max = 32;
 
 // Disable all IRQs (set CPSR I+F bits)

@@ -1,228 +1,184 @@
 module urt.thread;
 
-import urt.atomic;
-import urt.util : is_power_of_2;
+import urt.mem.allocator : defaultAllocator;
 
 nothrow @nogc:
 
 
-// thread-safe FIFO for passing data between threads.
-// uses a spinlock to protect enqueue/dequeue.
-struct ThreadSafeQueue(uint capacity = 64, T = void*)
+version (Windows)       enum ThreadsSupported = true;
+else version (Posix)    enum ThreadsSupported = true;
+else version (FreeRTOS) enum ThreadsSupported = true;
+else                    enum ThreadsSupported = false;
+
+
+alias Thread      = void*;
+alias ThreadEntry = void delegate() nothrow @nogc;
+
+
+// Spawn an OS thread. Returns null on failure.
+// stack_size = 0: platform default (Windows: 1MB; POSIX: ~8MB; FreeRTOS: 4096 bytes).
+Thread thread_spawn(ThreadEntry entry, size_t stack_size = 0)
 {
-nothrow @nogc:
+    auto entry_ptr = defaultAllocator().allocT!ThreadEntry();
+    if (!entry_ptr)
+        return null;
+    *entry_ptr = entry;
 
-    // returns false if queue is full (item not enqueued).
-    bool enqueue(T item)
+    Thread handle;
+    version (Windows)
     {
-        while (!cas(&_lock, false, true)) {}
-        uint count = _tail >= _head ? _tail - _head : capacity - _head + _tail;
-        if (count >= capacity)
-        {
-            _lock = false;
-            return false;
-        }
-        _queue[_tail] = item;
-        _tail = (_tail + 1) % capacity;
-        _lock = false;
-        return true;
+        import urt.internal.sys.windows.winbase : CreateThread;
+        handle = CreateThread(null, stack_size, &_win_entry, entry_ptr, 0, null);
     }
-
-    static if (is(T == U*, U) || is(T == void*))
+    else version (Posix)
     {
-        // dequeue a pointer, or null if empty.
-        T dequeue()
+        pthread_t tid;
+        int err;
+        if (stack_size == 0)
         {
-            while (!cas(&_lock, false, true)) {}
-            if (_head == _tail)
-            {
-                _lock = false;
-                return null;
-            }
-            auto result = _queue[_head];
-            _head = (_head + 1) % capacity;
-            _lock = false;
-            return result;
+            err = pthread_create(&tid, null, &_posix_entry, entry_ptr);
         }
+        else
+        {
+            pthread_attr_t attr;
+            pthread_attr_init(&attr);
+            pthread_attr_setstacksize(&attr, stack_size);
+            err = pthread_create(&tid, &attr, &_posix_entry, entry_ptr);
+            pthread_attr_destroy(&attr);
+        }
+        handle = (err == 0) ? cast(Thread)tid : null;
+    }
+    else version (FreeRTOS)
+    {
+        import urt.internal.sys.freertos;
+        UBaseType_t prio = uxTaskPriorityGet(null);   // inherit current task's priority
+        uint stack = stack_size ? cast(uint)stack_size : 4096;
+        TaskHandle_t h;
+        if (xTaskCreate(&_freertos_entry, null, stack, entry_ptr, prio, &h) != pdPASS)
+            h = null;
+        handle = h;
     }
     else
-    {
-        // dequeue a value type via output parameter.
-        // returns false if empty.
-        bool dequeue(T* out_)
-        {
-            while (!cas(&_lock, false, true)) {}
-            if (_head == _tail)
-            {
-                _lock = false;
-                return false;
-            }
-            *out_ = _queue[_head];
-            _head = (_head + 1) % capacity;
-            _lock = false;
-            return true;
-        }
-    }
+        static assert(false, "thread_spawn not supported on this target");
 
-private:
-    T[capacity] _queue;
-    shared uint _head;
-    shared uint _tail;
-    shared bool _lock;
+    if (!handle)
+    {
+        defaultAllocator().freeT(entry_ptr);
+        return null;
+    }
+    return handle;
+}
+
+void thread_join(Thread t)
+{
+    if (!t)
+        return;
+    version (Windows)
+    {
+        import urt.internal.sys.windows.winbase : WaitForSingleObject, CloseHandle, INFINITE;
+        WaitForSingleObject(t, INFINITE);
+        CloseHandle(t);
+    }
+    else version (Posix)
+        pthread_join(cast(pthread_t)t, null);
+    else version (FreeRTOS)
+        static assert(false, "thread_join is not yet implemented on FreeRTOS");
 }
 
 
-// Lock-free SPSC ring buffer.
-//
-// Producer side is staged: reserve() advances an internal uncommitted tail,
-// but writes stay invisible to the consumer until commit().
-//
-// Consumer side is symmetrical: peek() returns pointers/slices into the
-// committed region without advancing, pop(n) discards the oldest n slots
-// and invalidates any outstanding peek() pointers.
-struct SPSCRing(T, uint N)
-{
-nothrow @nogc:
-    static assert(N >= 2 && is_power_of_2(N), "N must be a power of two >= 2");
-
-    size_t pending() const
-    {
-        uint h = atomicLoad!(MemoryOrder.relaxed)(_head);
-        uint t = atomicLoad!(MemoryOrder.acquire)(_tail);
-        return (t - h) & (N - 1);
-    }
-
-    bool empty() const
-    {
-        uint h = atomicLoad!(MemoryOrder.relaxed)(_head);
-        uint t = atomicLoad!(MemoryOrder.acquire)(_tail);
-        return h == t;
-    }
-
-    // === Producer ===
-
-    size_t free_space() const
-    {
-        uint h = atomicLoad!(MemoryOrder.acquire)(_head);
-        return (N - 1) - ((_pending_tail - h) & (N - 1));
-    }
-
-    // reserve up to `count` T's and return a contiguous writable slice
-    // into the ring. may be shorter than count if ring boundary is hit
-    // or if there isn't enough free space.
-    T[] reserve(size_t count)
-    {
-        if (count == 0)
-            return null;
-        uint pt = _pending_tail;
-        uint h  = atomicLoad!(MemoryOrder.acquire)(_head);
-        size_t free = (N - 1) - ((pt - h) & (N - 1));
-        size_t n = count < free ? count : free;
-        size_t to_end = N - pt;
-        if (n > to_end)
-            n = to_end;
-        if (n == 0)
-            return null;
-        T[] r = _buf[pt .. pt + n];
-        _pending_tail = cast(uint)((pt + n) & (N - 1));
-        return r;
-    }
-
-    T* reserve()
-        => reserve(1).ptr;
-
-    void commit()
-    {
-        atomicStore!(MemoryOrder.release)(_tail, _pending_tail);
-    }
-
-    void rollback()
-    {
-        _pending_tail = atomicLoad!(MemoryOrder.relaxed)(_tail);
-    }
-
-    size_t push(const(T)[] src, bool allow_partial = false)
-    {
-        if (src.length == 0)
-            return 0;
-        uint pt = _pending_tail;
-        uint h  = atomicLoad!(MemoryOrder.acquire)(_head);
-        size_t free = (N - 1) - ((pt - h) & (N - 1));
-        if (!allow_partial && src.length > free)
-            return 0;
-        size_t n = src.length < free ? src.length : free;
-        if (n == 0)
-            return 0;
-        size_t to_end = N - pt;
-        if (n <= to_end)
-            _buf[pt .. pt + n] = src[0 .. n];
-        else
-        {
-            _buf[pt .. N]         = src[0 .. to_end];
-            _buf[0 .. n - to_end] = src[to_end .. n];
-        }
-        _pending_tail = cast(uint)((pt + n) & (N - 1));
-        atomicStore!(MemoryOrder.release)(_tail, _pending_tail);
-        return n;
-    }
-
-    // === Consumer ===
-
-    // peek up to `count` contiguous committed slots starting  at the oldest.
-    // may be shorter than count when wrapping the ring boundary.
-    // the returned slice is invalidated by the next pop().
-    T[] peek(size_t count)
-    {
-        if (count == 0)
-            return null;
-        uint h = atomicLoad!(MemoryOrder.relaxed)(_head);
-        uint t = atomicLoad!(MemoryOrder.acquire)(_tail);
-        size_t filled = (t - h) & (N - 1);
-        size_t n = count < filled ? count : filled;
-        size_t to_end = N - h;
-        if (n > to_end)
-            n = to_end;
-        if (n == 0)
-            return null;
-        return _buf[h .. h + n];
-    }
-
-    T* peek()
-        => peek(1).ptr;
-
-    // discard the oldest `count` committed slots.
-    // invalidates pointers returned by prior peeks
-    void pop(size_t count)
-    {
-        uint h = atomicLoad!(MemoryOrder.relaxed)(_head);
-        atomicStore!(MemoryOrder.release)(_head, cast(uint)((h + count) & (N - 1)));
-    }
-
-    size_t pop(T[] dst)
-    {
-        if (dst.length == 0)
-            return 0;
-        uint h = atomicLoad!(MemoryOrder.relaxed)(_head);
-        uint t = atomicLoad!(MemoryOrder.acquire)(_tail);
-        size_t filled = (t - h) & (N - 1);
-        size_t n = dst.length < filled ? dst.length : filled;
-        if (n == 0)
-            return 0;
-        size_t to_end = N - h;
-        if (n <= to_end)
-            dst[0 .. n] = _buf[h .. h + n];
-        else
-        {
-            dst[0 .. to_end] = _buf[h .. N];
-            dst[to_end .. n] = _buf[0 .. n - to_end];
-        }
-        atomicStore!(MemoryOrder.release)(_head, cast(uint)((h + n) & (N - 1)));
-        return n;
-    }
-
 private:
-    T[N] _buf;
-    shared uint _head;
-    shared uint _tail;
-    uint _pending_tail;     // producer-only; staging cursor for uncommitted writes
+
+version (Windows)
+{
+    extern(Windows) uint _win_entry(void* arg) nothrow @nogc
+    {
+        auto entry_ptr = cast(ThreadEntry*)arg;
+        ThreadEntry entry = *entry_ptr;
+        defaultAllocator().freeT(entry_ptr);
+        entry();
+        return 0;
+    }
+}
+else version (Posix)
+{
+    extern(C) void* _posix_entry(void* arg) nothrow @nogc
+    {
+        auto entry_ptr = cast(ThreadEntry*)arg;
+        ThreadEntry entry = *entry_ptr;
+        defaultAllocator().freeT(entry_ptr);
+        entry();
+        return null;
+    }
+}
+else version (FreeRTOS)
+{
+    extern(C) void _freertos_entry(void* arg) nothrow @nogc
+    {
+        import urt.internal.sys.freertos : vTaskDelete;
+        auto entry_ptr = cast(ThreadEntry*)arg;
+        ThreadEntry entry = *entry_ptr;
+        defaultAllocator().freeT(entry_ptr);
+        entry();
+        vTaskDelete(null);
+    }
+}
+
+
+// --- Platform bindings --------------------------------------------------
+
+version (Posix)
+{
+    extern(C) nothrow @nogc:
+
+    // pthread_t -- typedef varies by impl. Linux glibc: unsigned long.
+    // Darwin: _opaque_pthread_t*.
+    alias pthread_t = void*;
+
+    // pthread_attr_t -- opaque, platform-sized.
+    // Linux: 56 bytes (x86_64), 36 (x86). Darwin: 56 (64-bit), 36 (32-bit).
+    // Conservative ceilings below.
+    version (linux)
+    {
+        static if (size_t.sizeof == 8)
+            struct pthread_attr_t { align(8) ubyte[64] _; }
+        else
+            struct pthread_attr_t { align(4) ubyte[36] _; }
+    }
+    else version (Darwin)
+    {
+        static if (size_t.sizeof == 8)
+            struct pthread_attr_t { align(8) ubyte[64] _; }
+        else
+            struct pthread_attr_t { align(4) ubyte[40] _; }
+    }
+    else
+        static assert(false, "pthread_attr_t size not configured for this POSIX target");
+
+    alias PthreadStart = extern(C) void* function(void*) nothrow @nogc;
+    int pthread_create(pthread_t*, const(pthread_attr_t)*, PthreadStart, void*);
+    int pthread_join(pthread_t, void**);
+    int pthread_attr_init(pthread_attr_t*);
+    int pthread_attr_destroy(pthread_attr_t*);
+    int pthread_attr_setstacksize(pthread_attr_t*, size_t);
+}
+
+
+version (Windows)    enum _has_smoke = true;
+else version (Posix) enum _has_smoke = true;
+else                 enum _has_smoke = false;
+
+static if (_has_smoke)
+{
+    import urt.atomic;
+
+    unittest
+    {
+        static shared int _smoke_counter;
+
+        atomicStore(_smoke_counter, 0);
+        Thread t = thread_spawn(() nothrow @nogc { atomicFetchAdd(_smoke_counter, 1); });
+        assert(t !is null);
+        thread_join(t);
+        assert(atomicLoad(_smoke_counter) == 1);
+    }
 }

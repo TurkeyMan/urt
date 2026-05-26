@@ -15,7 +15,7 @@ version (Windows):
 import urt.atomic : atomicFetchAdd, atomicFetchSub, atomicLoad, atomicStore;
 import urt.log;
 import urt.mem.allocator : defaultAllocator;
-import urt.thread : ThreadSafeQueue;
+import urt.sync.mpmc : ThreadSafeQueue;
 import urt.uuid : GUID;
 
 import urt.driver.ble;

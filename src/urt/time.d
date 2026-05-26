@@ -1,5 +1,6 @@
 module urt.time;
 
+import urt.array : Array;
 import urt.traits : is_some_float;
 
 version (Windows)
@@ -1060,10 +1061,45 @@ void set_utc_time(ulong unix_ns)
             p.magic = HbnPersist.HBN_MAGIC;
         }
     }
+
+    notify_clock_change();
 }
 
 
+alias ClockChangeHandler = void delegate() nothrow @nogc;
+
+void subscribe_clock_change(ClockChangeHandler h)
+{
+    _clock_change_handlers ~= h;
+}
+
+void unsubscribe_clock_change(ClockChangeHandler h)
+{
+    debug assert(g_iterating_clock_change == false, "must not unsubscribe from a clock_change handler");
+    foreach (i, hh; _clock_change_handlers)
+    {
+        if (hh is h)
+        {
+            _clock_change_handlers.removeSwapLast(i);
+            return;
+        }
+    }
+}
+
+void notify_clock_change()
+{
+    debug g_iterating_clock_change = true;
+    foreach (h; _clock_change_handlers)
+        h();
+    debug g_iterating_clock_change = false;
+}
+
+debug __gshared g_iterating_clock_change = false;
+
+
 private:
+
+__gshared Array!ClockChangeHandler _clock_change_handlers;
 
 __gshared immutable MonoTime startTime;
 

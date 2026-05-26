@@ -28,21 +28,10 @@ int *ow_errno_location(void)
     return &errno;
 }
 
-// -- IRQ wrappers --
-
-static portMUX_TYPE ow_irq_mux = portMUX_INITIALIZER_UNLOCKED;
-
-uint32_t ow_irq_disable(void)
-{
-    portENTER_CRITICAL(&ow_irq_mux);
-    return 1;
-}
-
-void ow_irq_enable(uint32_t prev)
-{
-    (void)prev;
-    portEXIT_CRITICAL(&ow_irq_mux);
-}
+// -- WFI shim --
+// Single-instruction inline asm; bound from D as ow_irq_wait. The
+// surrounding portENTER_CRITICAL pair is handled D-side via direct
+// vPortEnterCritical/vPortExitCritical bindings -- no C wrapper needed.
 
 void ow_irq_wait(void)
 {
@@ -51,42 +40,6 @@ void ow_irq_wait(void)
 #elif CONFIG_IDF_TARGET_ARCH_RISCV
     __asm__ volatile("wfi");
 #endif
-}
-
-// -- FreeRTOS task wrappers --
-
-typedef void (*ow_task_func_t)(void *);
-
-int ow_task_create(ow_task_func_t func, const char *name, uint32_t stack_bytes,
-                   void *param, uint32_t priority, void **out_handle)
-{
-    return xTaskCreate(func, name, stack_bytes, param, priority,
-                       (TaskHandle_t *)out_handle) == pdPASS ? 1 : 0;
-}
-
-void ow_task_delete(void *handle)
-{
-    vTaskDelete((TaskHandle_t)handle);
-}
-
-void *ow_task_current(void)
-{
-    return (void *)xTaskGetCurrentTaskHandle();
-}
-
-void ow_task_notify_give(void *handle)
-{
-    xTaskNotifyGive((TaskHandle_t)handle);
-}
-
-uint32_t ow_task_notify_take(uint32_t ticks_to_wait)
-{
-    return ulTaskNotifyTake(pdTRUE, ticks_to_wait);
-}
-
-uint32_t ow_task_priority_get(void *handle)
-{
-    return uxTaskPriorityGet((TaskHandle_t)handle);
 }
 
 // -- GPIO wrappers (software GPIO; peripheral function routing goes
